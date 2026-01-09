@@ -8,7 +8,7 @@ use anyhow::Result;
 use std::time::Duration;
 
 pub async fn run(args: RootWaitArgs, _config: Config, addresses: AddressBook) -> Result<()> {
-    let client = RpcClient::new(&args.rpc)?;
+    let client = RpcClient::new(&args.rpc).await?;
     let chain_id = parse_u256(&args.source_chain)?;
     let expected_root = parse_b256(&args.expected_root)?;
     let timeout = Duration::from_millis(args.timeout_ms.unwrap_or(300_000));

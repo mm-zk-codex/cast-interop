@@ -132,10 +132,9 @@ pub enum RootSubcommand {
 
 impl RootCommand {
     pub async fn run(self, config: Config, addresses: AddressBook) -> Result<()> {
-        todo!();
-        /*match self.command {
+        match self.command {
             RootSubcommand::Wait(args) => commands::root_wait::run(args, config, addresses).await,
-        }*/
+        }
     }
 }
 
