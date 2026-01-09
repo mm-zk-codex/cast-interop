@@ -9,7 +9,6 @@ use alloy_primitives::{Address, Bytes, U256};
 use alloy_provider::{Provider, ProviderBuilder};
 use alloy_rpc_types::TransactionInput;
 use alloy_sol_types::SolValue;
-use alloy_transport_http::Http;
 use anyhow::{anyhow, Context, Result};
 use std::fs;
 use std::path::Path;

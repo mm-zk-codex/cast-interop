@@ -2,7 +2,7 @@ use crate::types::{address_to_hex, b256_to_hex, format_hex, u256_to_string};
 use crate::types::{BundleAttributesView, InteropBundle, InteropBundleView as BundleView};
 use crate::types::{InteropCallView, MessageInclusionProof};
 use alloy_primitives::ruint::aliases::U256;
-use alloy_primitives::{keccak256, Address, Bytes, B256, U256 as AlloyU256, U8};
+use alloy_primitives::{keccak256, Address, Bytes, B256, U256 as AlloyU256};
 use alloy_sol_types::{SolCall, SolError, SolValue};
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;

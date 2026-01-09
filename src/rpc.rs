@@ -1,7 +1,6 @@
-use alloy_primitives::{Address, Bytes, B256, U256};
-use alloy_provider::{DynProvider, Provider, ProviderBuilder, RootProvider};
+use alloy_primitives::{Address, Bytes, B256};
+use alloy_provider::{DynProvider, Provider, ProviderBuilder};
 use alloy_rpc_types::{BlockNumberOrTag, TransactionInput, TransactionReceipt, TransactionRequest};
-use alloy_transport_http::Http;
 use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
