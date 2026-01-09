@@ -1,8 +1,8 @@
 use crate::types::{address_to_hex, b256_to_hex, format_hex, u256_to_string};
 use crate::types::{BundleAttributesView, InteropBundle, InteropBundleView as BundleView};
 use crate::types::{InteropCallView, MessageInclusionProof};
-use alloy_primitives::{keccak256, Address, Bytes, B256, U256 as AlloyU256};
-use alloy_sol_types::SolValue;
+use alloy_primitives::{keccak256, Address, Bytes, B256, U256 as AlloyU256, U8};
+use alloy_sol_types::{SolCall, SolValue};
 use anyhow::{anyhow, Result};
 use std::str::FromStr;
 
@@ -56,6 +56,10 @@ pub fn message_sent_topic() -> B256 {
     event_topic("MessageSent(bytes32,bytes,bytes,bytes,uint256,bytes[])")
 }
 
+pub fn l1_message_sent_topic() -> B256 {
+    event_topic("L1MessageSent(address,bytes32,bytes)")
+}
+
 pub fn bundle_verified_topic() -> B256 {
     event_topic("BundleVerified(bytes32)")
 }
@@ -73,7 +77,7 @@ pub fn call_processed_topic() -> B256 {
 }
 
 pub fn decode_interop_bundle_sent(data: Bytes) -> Result<(B256, B256, InteropBundle)> {
-    let decoded = InteropBundleSent::abi_decode(&data, true)?;
+    let decoded = InteropBundleSent::abi_decode(&data)?;
     Ok((
         decoded.l2l1MsgHash,
         decoded.interopBundleHash,
@@ -82,12 +86,14 @@ pub fn decode_interop_bundle_sent(data: Bytes) -> Result<(B256, B256, InteropBun
 }
 
 pub fn decode_message_sent(data: Bytes) -> Result<MessageSentData> {
-    Ok(MessageSentData::abi_decode(&data, true)?)
+    Ok(MessageSentData::abi_decode(&data)?)
 }
 
 pub fn decode_u8(data: Bytes) -> Result<u8> {
-    let value: (u8,) = <(u8,)>::abi_decode(&data, true)?;
-    Ok(value.0)
+    //let value: (u8,) = <(u8,)>::abi_decode(&data)?;
+    //Ok(value.0)
+    let v: u8 = *data.first().ok_or_else(|| anyhow::anyhow!("empty data"))?;
+    Ok(v)
 }
 
 pub fn bundle_view(bundle: &InteropBundle) -> BundleView {
@@ -168,7 +174,7 @@ pub fn encode_interop_roots_call(chain_id: AlloyU256, batch_number: AlloyU256) -
 }
 
 fn proof_to_sol(proof: MessageInclusionProof) -> Result<MessageInclusionProofSol> {
-    let chain_id = AlloyU256::from_dec_str(&proof.chain_id)
+    let chain_id = AlloyU256::from_str(&proof.chain_id)
         .map_err(|err| anyhow!("invalid chainId {}: {err}", proof.chain_id))?;
     let sender = Address::from_str(&proof.message.sender)
         .map_err(|err| anyhow!("invalid sender {}: {err}", proof.message.sender))?;
@@ -194,16 +200,18 @@ fn proof_to_sol(proof: MessageInclusionProof) -> Result<MessageInclusionProofSol
 }
 
 pub fn decode_bundle_status(data: Bytes) -> Result<u8> {
-    let value: (u8,) = <(u8,)>::abi_decode(&data, true)?;
-    Ok(value.0)
+    //let value: (u8,) = <(u8,)>::abi_decode(&data)?;
+    //Ok(value.0)
+    decode_u8(data)
 }
 
 pub fn decode_call_status(data: Bytes) -> Result<u8> {
-    let value: (u8,) = <(u8,)>::abi_decode(&data, true)?;
-    Ok(value.0)
+    //let value: (U8,) = <(U8,)>::abi_decode(&data)?;
+    //Ok(value.0)
+    decode_u8(data)
 }
 
 pub fn decode_bytes32(data: Bytes) -> Result<B256> {
-    let value: (B256,) = <(B256,)>::abi_decode(&data, true)?;
+    let value: (B256,) = <(B256,)>::abi_decode(&data)?;
     Ok(value.0)
 }

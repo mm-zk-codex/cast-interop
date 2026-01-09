@@ -1,22 +1,22 @@
 use crate::abi::{
     bundle_executed_topic, bundle_unbundled_topic, bundle_verified_topic, call_processed_topic,
     decode_interop_bundle_sent, decode_message_sent, decode_u8, interop_bundle_sent_topic,
-    message_sent_topic,
+    l1_message_sent_topic, message_sent_topic,
 };
 use crate::cli::TxShowArgs;
 use crate::config::Config;
 use crate::rpc::{get_transaction_receipt, RpcClient};
 use crate::types::{
     address_to_hex, b256_to_hex, format_hex, u256_to_string, AddressBook, EventView,
-    InteropBundleView, TxShowOutput,
+    InteropBundleView, TxShowOutput, L1_SENDER_ADDRESS,
 };
-use alloy_primitives::{B256, U256};
+use alloy_primitives::{Address, B256, U256};
 use anyhow::{Context, Result};
 use serde_json::json;
 use std::str::FromStr;
 
 pub async fn run(args: TxShowArgs, _config: Config, _addresses: AddressBook) -> Result<()> {
-    let client = RpcClient::new(&args.rpc)?;
+    let client = RpcClient::new(&args.rpc).await?;
     let tx_hash = B256::from_str(&args.tx_hash)
         .with_context(|| format!("invalid tx hash {}", args.tx_hash))?;
     let receipt = get_transaction_receipt(&client, tx_hash).await?;
@@ -26,30 +26,66 @@ pub async fn run(args: TxShowArgs, _config: Config, _addresses: AddressBook) -> 
     let mut l2l1_msg_hash: Option<String> = None;
     let mut events = Vec::new();
 
-    for log in receipt.logs {
-        let topic0 = log.topics.get(0).cloned();
+    println!("Topics are as follows:");
+    println!(
+        "interop bundle sent topic: {:?}",
+        interop_bundle_sent_topic()
+    );
+    println!("message sent topic: {:?}", message_sent_topic());
+    println!("l1 message sent topic: {:?}", l1_message_sent_topic());
+    println!("bundle verified topic: {:?}", bundle_verified_topic());
+
+    for log in receipt.logs() {
+        let topic0 = log.topics().get(0).cloned();
+        println!("log topics: {:?}", log.topics());
         let Some(topic0) = topic0 else { continue };
         if topic0 == interop_bundle_sent_topic() {
-            let (l2l1_hash, interop_hash, bundle) = decode_interop_bundle_sent(log.data.clone())?;
+            let (l2l1_hash, interop_hash, bundle) =
+                decode_interop_bundle_sent(log.data().data.clone())?;
             let bundle_json = crate::abi::bundle_view(&bundle);
             bundle_view = Some(bundle_json.clone());
             bundle_hash = Some(b256_to_hex(interop_hash));
             l2l1_msg_hash = Some(b256_to_hex(l2l1_hash));
             events.push(EventView {
                 name: "InteropBundleSent".to_string(),
-                address: address_to_hex(log.address),
+                address: address_to_hex(log.address()),
                 data: serde_json::to_value(&bundle_json)?,
             });
+        } else if topic0 == l1_message_sent_topic() {
+            if log.address() != L1_SENDER_ADDRESS {
+                continue;
+            }
+            print!("Decoding L1MessageSent event...\n");
+            let sender = log
+                .topics()
+                .get(1)
+                .map(|topic| address_to_hex(Address::from_slice(&topic.as_slice()[12..])))
+                .unwrap_or_default();
+            let l2l1_msg_hash = log
+                .topics()
+                .get(2)
+                .map(|topic| b256_to_hex(*topic))
+                .unwrap_or_default();
+            events.push(EventView {
+                name: "L1MessageSent".to_string(),
+                address: sender.clone(),
+                data: json!({
+                    "sender": sender,
+                    "l2l1MsgHash": l2l1_msg_hash,
+                    "payload": format_hex(log.data().data.as_ref()),
+                }),
+            });
         } else if topic0 == message_sent_topic() {
-            let decoded = decode_message_sent(log.data.clone())?;
+            print!("Decoding MessageSent event...\n");
+            let decoded = decode_message_sent(log.data().data.clone())?;
             let send_id = log
-                .topics
+                .topics()
                 .get(1)
                 .map(|topic| b256_to_hex(*topic))
                 .unwrap_or_default();
             events.push(EventView {
                 name: "MessageSent".to_string(),
-                address: address_to_hex(log.address),
+                address: address_to_hex(log.address()),
                 data: json!({
                     "sendId": send_id,
                     "sender": format_hex(decoded.sender.as_ref()),
@@ -67,20 +103,20 @@ pub async fn run(args: TxShowArgs, _config: Config, _addresses: AddressBook) -> 
             events.push(simple_bundle_event("BundleUnbundled", &log));
         } else if topic0 == call_processed_topic() {
             let bundle_hash = log
-                .topics
+                .topics()
                 .get(1)
                 .map(|topic| b256_to_hex(*topic))
                 .unwrap_or_default();
             let call_index = log
-                .topics
+                .topics()
                 .get(2)
                 .map(|topic| U256::from_be_slice(topic.as_slice()))
                 .map(u256_to_string)
                 .unwrap_or_default();
-            let status = decode_u8(log.data.clone())?;
+            let status = decode_u8(log.data().data.clone())?;
             events.push(EventView {
                 name: "CallProcessed".to_string(),
-                address: address_to_hex(log.address),
+                address: address_to_hex(log.address()),
                 data: json!({
                     "bundleHash": bundle_hash,
                     "callIndex": call_index,
@@ -144,13 +180,13 @@ pub async fn run(args: TxShowArgs, _config: Config, _addresses: AddressBook) -> 
 
 fn simple_bundle_event(name: &str, log: &alloy_rpc_types::Log) -> EventView {
     let bundle_hash = log
-        .topics
+        .topics()
         .get(1)
         .map(|topic| b256_to_hex(*topic))
         .unwrap_or_default();
     EventView {
         name: name.to_string(),
-        address: address_to_hex(log.address),
+        address: address_to_hex(log.address()),
         data: json!({ "bundleHash": bundle_hash }),
     }
 }

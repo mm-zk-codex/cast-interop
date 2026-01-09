@@ -1,6 +1,6 @@
 use alloy_primitives::{Address, Bytes, B256, U256};
-use alloy_provider::{Provider, ProviderBuilder, RootProvider};
-use alloy_rpc_types::{BlockNumberOrTag, TransactionReceipt, TransactionRequest};
+use alloy_provider::{DynProvider, Provider, ProviderBuilder, RootProvider};
+use alloy_rpc_types::{BlockNumberOrTag, TransactionInput, TransactionReceipt, TransactionRequest};
 use alloy_transport_http::Http;
 use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
@@ -11,18 +11,19 @@ use std::time::Duration;
 #[derive(Clone)]
 pub struct RpcClient {
     pub url: String,
-    pub provider: RootProvider<Http<Client>>,
+    pub provider: DynProvider,
     pub http: Client,
 }
 
 impl RpcClient {
-    pub fn new(url: &str) -> Result<Self> {
+    pub async fn new(url: &str) -> Result<Self> {
         let http = Client::new();
-        let transport = Http::new(url.parse()?);
-        let provider = ProviderBuilder::new().on_http(transport);
+
+        let provider = ProviderBuilder::new().connect(url).await?;
+
         Ok(Self {
             url: url.to_string(),
-            provider,
+            provider: provider.erased(),
             http,
         })
     }
@@ -51,10 +52,10 @@ pub async fn get_transaction_receipt(
 pub async fn get_finalized_block_number(client: &RpcClient) -> Result<u64> {
     let block = client
         .provider
-        .get_block_by_number(BlockNumberOrTag::Finalized, false)
+        .get_block_by_number(BlockNumberOrTag::Finalized)
         .await?
         .ok_or_else(|| anyhow!("finalized block not found"))?;
-    Ok(block.header.number.unwrap_or_default())
+    Ok(block.header.number)
 }
 
 pub async fn wait_for_finalized_block(
@@ -141,11 +142,11 @@ pub async fn raw_rpc<T: for<'de> Deserialize<'de>>(
 
 pub async fn eth_call(client: &RpcClient, to: Address, data: Bytes) -> Result<Bytes> {
     let request = TransactionRequest {
-        to: Some(to),
-        data: Some(data),
+        to: Some(to.into()),
+        input: TransactionInput::new(data),
         ..Default::default()
     };
-    let result = client.provider.call(&request, None).await?;
+    let result = client.provider.call(request).await?;
     Ok(result)
 }
 
@@ -154,16 +155,17 @@ pub async fn estimate_gas(
     from: Address,
     to: Address,
     data: Bytes,
-) -> Result<U256> {
+) -> Result<u64> {
     let request = TransactionRequest {
         from: Some(from),
-        to: Some(to),
-        data: Some(data),
+        to: Some(to.into()),
+        input: TransactionInput::new(data),
         ..Default::default()
     };
-    Ok(client.provider.estimate_gas(&request, None).await?)
+    Ok(client.provider.estimate_gas(request).await?)
 }
 
 pub async fn send_raw_transaction(client: &RpcClient, raw_tx: Bytes) -> Result<B256> {
-    Ok(client.provider.send_raw_transaction(raw_tx).await?)
+    let tx = client.provider.send_raw_transaction(&raw_tx).await?;
+    Ok(tx.tx_hash().clone())
 }
