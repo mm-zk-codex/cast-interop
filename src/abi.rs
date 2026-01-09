@@ -77,7 +77,7 @@ pub fn call_processed_topic() -> B256 {
 }
 
 pub fn decode_interop_bundle_sent(data: Bytes) -> Result<(B256, B256, InteropBundle)> {
-    let decoded = InteropBundleSent::abi_decode(&data)?;
+    let decoded = InteropBundleSent::abi_decode_params(&data)?;
     Ok((
         decoded.l2l1MsgHash,
         decoded.interopBundleHash,
@@ -86,7 +86,7 @@ pub fn decode_interop_bundle_sent(data: Bytes) -> Result<(B256, B256, InteropBun
 }
 
 pub fn decode_message_sent(data: Bytes) -> Result<MessageSentData> {
-    Ok(MessageSentData::abi_decode(&data)?)
+    Ok(MessageSentData::abi_decode_params(&data)?)
 }
 
 pub fn decode_u8(data: Bytes) -> Result<u8> {

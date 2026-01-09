@@ -92,7 +92,8 @@ pub enum BundleSubcommand {
 
 impl BundleCommand {
     pub async fn run(self, config: Config, addresses: AddressBook) -> Result<()> {
-        match self.command {
+        todo!()
+        /*match self.command {
             BundleSubcommand::Extract(args) => {
                 commands::bundle_extract::run(args, config, addresses).await
             }
@@ -102,7 +103,7 @@ impl BundleCommand {
             BundleSubcommand::Execute(args) => {
                 commands::bundle_action::run_execute(args, config, addresses).await
             }
-        }
+        }*/
     }
 }
 
@@ -114,7 +115,8 @@ pub struct ProofCommand {
 
 impl ProofCommand {
     pub async fn run(self, config: Config, addresses: AddressBook) -> Result<()> {
-        commands::proof::run(self.args, config, addresses).await
+        todo!();
+        //commands::proof::run(self.args, config, addresses).await
     }
 }
 
@@ -131,9 +133,10 @@ pub enum RootSubcommand {
 
 impl RootCommand {
     pub async fn run(self, config: Config, addresses: AddressBook) -> Result<()> {
-        match self.command {
+        todo!();
+        /*match self.command {
             RootSubcommand::Wait(args) => commands::root_wait::run(args, config, addresses).await,
-        }
+        }*/
     }
 }
 
@@ -145,7 +148,8 @@ pub struct StatusCommand {
 
 impl StatusCommand {
     pub async fn run(self, config: Config, addresses: AddressBook) -> Result<()> {
-        commands::status::run(self.args, config, addresses).await
+        todo!();
+        //commands::status::run(self.args, config, addresses).await
     }
 }
 
@@ -157,7 +161,8 @@ pub struct RelayCommand {
 
 impl RelayCommand {
     pub async fn run(self, config: Config, addresses: AddressBook) -> Result<()> {
-        commands::relay::run(self.args, config, addresses).await
+        todo!();
+        //commands::relay::run(self.args, config, addresses).await
     }
 }
 

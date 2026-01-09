@@ -8,7 +8,7 @@ use crate::config::Config;
 use crate::rpc::{get_transaction_receipt, RpcClient};
 use crate::types::{
     address_to_hex, b256_to_hex, format_hex, u256_to_string, AddressBook, EventView,
-    InteropBundleView, TxShowOutput, L1_SENDER_ADDRESS,
+    InteropBundleView, TxShowOutput, INTEROP_CENTER_ADDRESS, L1_SENDER_ADDRESS,
 };
 use alloy_primitives::{Address, B256, U256};
 use anyhow::{Context, Result};
@@ -39,7 +39,8 @@ pub async fn run(args: TxShowArgs, _config: Config, _addresses: AddressBook) -> 
         let topic0 = log.topics().get(0).cloned();
         println!("log topics: {:?}", log.topics());
         let Some(topic0) = topic0 else { continue };
-        if topic0 == interop_bundle_sent_topic() {
+        if topic0 == interop_bundle_sent_topic() && log.address() == INTEROP_CENTER_ADDRESS {
+            println!("Decoding InteropBundleSent event...");
             let (l2l1_hash, interop_hash, bundle) =
                 decode_interop_bundle_sent(log.data().data.clone())?;
             let bundle_json = crate::abi::bundle_view(&bundle);
@@ -51,10 +52,7 @@ pub async fn run(args: TxShowArgs, _config: Config, _addresses: AddressBook) -> 
                 address: address_to_hex(log.address()),
                 data: serde_json::to_value(&bundle_json)?,
             });
-        } else if topic0 == l1_message_sent_topic() {
-            if log.address() != L1_SENDER_ADDRESS {
-                continue;
-            }
+        } else if topic0 == l1_message_sent_topic() && log.address() == L1_SENDER_ADDRESS {
             print!("Decoding L1MessageSent event...\n");
             let sender = log
                 .topics()
@@ -75,9 +73,10 @@ pub async fn run(args: TxShowArgs, _config: Config, _addresses: AddressBook) -> 
                     "payload": format_hex(log.data().data.as_ref()),
                 }),
             });
-        } else if topic0 == message_sent_topic() {
+        } else if topic0 == message_sent_topic() && log.address() != INTEROP_CENTER_ADDRESS {
             print!("Decoding MessageSent event...\n");
             let decoded = decode_message_sent(log.data().data.clone())?;
+            println!("Message decoded");
             let send_id = log
                 .topics()
                 .get(1)
@@ -127,6 +126,8 @@ pub async fn run(args: TxShowArgs, _config: Config, _addresses: AddressBook) -> 
             continue;
         }
     }
+
+    println!("===== Decoding Complete =====");
 
     let output = TxShowOutput {
         tx_hash: format!("{tx_hash:#x}"),
