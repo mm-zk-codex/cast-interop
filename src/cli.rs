@@ -92,8 +92,7 @@ pub enum BundleSubcommand {
 
 impl BundleCommand {
     pub async fn run(self, config: Config, addresses: AddressBook) -> Result<()> {
-        todo!()
-        /*match self.command {
+        match self.command {
             BundleSubcommand::Extract(args) => {
                 commands::bundle_extract::run(args, config, addresses).await
             }
@@ -103,7 +102,7 @@ impl BundleCommand {
             BundleSubcommand::Execute(args) => {
                 commands::bundle_action::run_execute(args, config, addresses).await
             }
-        }*/
+        }
     }
 }
 

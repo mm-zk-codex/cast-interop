@@ -9,15 +9,15 @@ use std::fs;
 use std::str::FromStr;
 
 pub async fn run(args: BundleExtractArgs, _config: Config, _addresses: AddressBook) -> Result<()> {
-    let client = RpcClient::new(&args.rpc)?;
+    let client = RpcClient::new(&args.rpc).await?;
     let tx_hash =
         B256::from_str(&args.tx).with_context(|| format!("invalid tx hash {}", args.tx))?;
     let receipt = get_transaction_receipt(&client, tx_hash).await?;
 
     let mut found = None;
-    for log in receipt.logs {
-        if log.topics.first().copied() == Some(interop_bundle_sent_topic()) {
-            let decoded = decode_interop_bundle_sent(log.data.clone())?;
+    for log in receipt.logs() {
+        if log.topics().first().copied() == Some(interop_bundle_sent_topic()) {
+            let decoded = decode_interop_bundle_sent(log.data().data.clone())?;
             found = Some(decoded);
             break;
         }

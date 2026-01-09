@@ -3,8 +3,9 @@ use crate::types::{BundleAttributesView, InteropBundle, InteropBundleView as Bun
 use crate::types::{InteropCallView, MessageInclusionProof};
 use alloy_primitives::ruint::aliases::U256;
 use alloy_primitives::{keccak256, Address, Bytes, B256, U256 as AlloyU256, U8};
-use alloy_sol_types::{SolCall, SolValue};
+use alloy_sol_types::{SolCall, SolError, SolValue};
 use anyhow::{anyhow, Result};
+use std::collections::HashMap;
 use std::str::FromStr;
 
 alloy_sol_types::sol! {
@@ -41,6 +42,46 @@ alloy_sol_types::sol! {
     function bundleStatus(bytes32 bundleHash) external view returns (uint8);
     function callStatus(bytes32 bundleHash, uint256 callIndex) external view returns (uint8);
     function interopRoots(uint256 chainId, uint256 batchNumber) external view returns (bytes32);
+
+    // 0x9031f751
+    error AttributeAlreadySet(bytes4 selector);
+    // 0xbcb41ec7
+    error AttributeViolatesRestriction(bytes4 selector, uint256 restriction);
+    // 0x5bba5111
+    error BundleAlreadyProcessed(bytes32 bundleHash);
+    // 0xa43d2953
+    error BundleVerifiedAlready(bytes32 bundleHash);
+    // 0xd5c7a376
+    error CallAlreadyExecuted(bytes32 bundleHash, uint256 callIndex);
+    // 0xc087b727
+    error CallNotExecutable(bytes32 bundleHash, uint256 callIndex);
+    // 0xf729f26d
+    error CanNotUnbundle(bytes32 bundleHash);
+    // 0xe845be4c
+    error ExecutingNotAllowed(bytes32 bundleHash, bytes callerAddress, bytes executionAddress);
+    // 0x62d214aa
+    error IndirectCallValueMismatch(uint256 expected, uint256 actual);
+    // 0xfe8b1b16
+    error InteroperableAddressChainReferenceNotEmpty(bytes interoperableAddress);
+    // 0x884f49ba
+    error InteroperableAddressNotEmpty(bytes interoperableAddress);
+    // 0xeae192ef
+    error InvalidInteropBundleVersion();
+    // 0xd5f13973
+    error InvalidInteropCallVersion();
+    // 0x32c2e156
+    error MessageNotIncluded();
+    // 0x89fd2c76
+    error UnauthorizedMessageSender(address expected, address actual);
+    // 0x0345c281
+    error UnbundlingNotAllowed(bytes32 bundleHash, bytes callerAddress, bytes unbundlerAddress);
+    // 0x801534e9
+    error WrongCallStatusLength(uint256 bundleCallsLength, uint256 providedCallStatusLength);
+    // 0x4534e972
+    error WrongDestinationChainId(bytes32 bundleHash, uint256 expected, uint256 actual);
+    // 0x534ab1b2
+    error WrongSourceChainId(bytes32 bundleHash, uint256 expected, uint256 actual);
+
 }
 
 pub fn event_topic(signature: &str) -> B256 {
@@ -95,6 +136,86 @@ pub fn decode_u8(data: Bytes) -> Result<u8> {
     //Ok(value.0)
     let v: u8 = *data.first().ok_or_else(|| anyhow::anyhow!("empty data"))?;
     Ok(v)
+}
+
+// Create a map from every error selector to its name
+pub fn error_selector_map() -> HashMap<String, &'static str> {
+    let mut map = HashMap::new();
+    map.insert(
+        hex::encode(AttributeAlreadySet::SELECTOR),
+        "AttributeAlreadySet",
+    );
+    map.insert(
+        hex::encode(AttributeViolatesRestriction::SELECTOR),
+        "AttributeViolatesRestriction",
+    );
+    map.insert(
+        hex::encode(BundleAlreadyProcessed::SELECTOR),
+        "BundleAlreadyProcessed",
+    );
+
+    map.insert(
+        hex::encode(BundleVerifiedAlready::SELECTOR),
+        "BundleVerifiedAlready",
+    );
+    map.insert(
+        hex::encode(CallAlreadyExecuted::SELECTOR),
+        "CallAlreadyExecuted",
+    );
+    map.insert(
+        hex::encode(CallNotExecutable::SELECTOR),
+        "CallNotExecutable",
+    );
+    map.insert(hex::encode(CanNotUnbundle::SELECTOR), "CanNotUnbundle");
+    map.insert(
+        hex::encode(ExecutingNotAllowed::SELECTOR),
+        "ExecutingNotAllowed",
+    );
+    map.insert(
+        hex::encode(IndirectCallValueMismatch::SELECTOR),
+        "IndirectCallValueMismatch",
+    );
+    map.insert(
+        hex::encode(InteroperableAddressChainReferenceNotEmpty::SELECTOR),
+        "InteroperableAddressChainReferenceNotEmpty",
+    );
+    map.insert(
+        hex::encode(InteroperableAddressNotEmpty::SELECTOR),
+        "InteroperableAddressNotEmpty",
+    );
+    map.insert(
+        hex::encode(InvalidInteropBundleVersion::SELECTOR),
+        "InvalidInteropBundleVersion",
+    );
+    map.insert(
+        hex::encode(InvalidInteropCallVersion::SELECTOR),
+        "InvalidInteropCallVersion",
+    );
+    map.insert(
+        hex::encode(MessageNotIncluded::SELECTOR),
+        "MessageNotIncluded",
+    );
+    map.insert(
+        hex::encode(UnauthorizedMessageSender::SELECTOR),
+        "UnauthorizedMessageSender",
+    );
+    map.insert(
+        hex::encode(UnbundlingNotAllowed::SELECTOR),
+        "UnbundlingNotAllowed",
+    );
+    map.insert(
+        hex::encode(WrongCallStatusLength::SELECTOR),
+        "WrongCallStatusLength",
+    );
+    map.insert(
+        hex::encode(WrongDestinationChainId::SELECTOR),
+        "WrongDestinationChainId",
+    );
+    map.insert(
+        hex::encode(WrongSourceChainId::SELECTOR),
+        "WrongSourceChainId",
+    );
+    map
 }
 
 pub fn bundle_view(bundle: &InteropBundle) -> BundleView {

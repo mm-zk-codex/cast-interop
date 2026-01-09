@@ -19,8 +19,7 @@ pub async fn run(args: StatusArgs, _config: Config, addresses: AddressBook) -> R
 
     let calls = if let Some(bundle_hex) = args.bundle.as_deref() {
         let bytes = load_hex_or_path(bundle_hex)?;
-        let bundle: crate::types::InteropBundle =
-            crate::types::InteropBundle::abi_decode_params(&bytes)?;
+        let bundle: crate::types::InteropBundle = crate::types::InteropBundle::abi_decode(&bytes)?;
 
         let mut statuses = Vec::new();
         for (idx, _) in bundle.calls.iter().enumerate() {

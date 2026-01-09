@@ -1,4 +1,4 @@
-use crate::abi::{encode_execute_bundle_call, encode_verify_bundle_call};
+use crate::abi::{encode_execute_bundle_call, encode_verify_bundle_call, error_selector_map};
 use crate::cli::BundleActionArgs;
 use crate::config::Config;
 use crate::rpc::{eth_call, RpcClient};
@@ -6,14 +6,16 @@ use crate::types::{
     require_signer_or_dry_run, AddressBook, MessageInclusionProof, BUNDLE_IDENTIFIER,
 };
 use alloy_primitives::{Address, Bytes, U256};
-use alloy_provider::ProviderBuilder;
-use alloy_signer_wallet::LocalWallet;
+use alloy_provider::{Provider, ProviderBuilder};
+use alloy_rpc_types::TransactionInput;
 use alloy_sol_types::SolValue;
 use alloy_transport_http::Http;
 use anyhow::{anyhow, Context, Result};
 use std::fs;
 use std::path::Path;
 use std::str::FromStr;
+
+use alloy_signer_local::PrivateKeySigner;
 
 pub async fn run_verify(
     args: BundleActionArgs,
@@ -86,7 +88,7 @@ async fn run_bundle_action(
     proof.message.data = format!(
         "0x{}{}",
         hex::encode([BUNDLE_IDENTIFIER]),
-        hex::encode(encoded_bundle.as_ref())
+        hex::encode(&encoded_bundle)
     );
 
     let calldata = if is_verify {
@@ -95,7 +97,7 @@ async fn run_bundle_action(
         encode_execute_bundle_call(Bytes::from(encoded_bundle.clone()), proof.clone())?
     };
 
-    let client = RpcClient::new(&args.rpc)?;
+    let client = RpcClient::new(&args.rpc).await?;
     if args.dry_run {
         match eth_call(&client, handler, calldata.clone()).await {
             Ok(_) => {
@@ -114,13 +116,16 @@ async fn run_bundle_action(
 
     let wallet = wallet.expect("wallet required");
     let chain_id = client.provider.get_chain_id().await?;
-    let wallet = wallet.with_chain_id(chain_id);
-    let transport = Http::new(args.rpc.parse()?);
-    let provider = ProviderBuilder::new().wallet(wallet).on_http(transport);
+
+    let provider = ProviderBuilder::new()
+        .wallet(wallet)
+        .with_chain_id(chain_id)
+        .connect(&args.rpc)
+        .await?;
 
     let request = alloy_rpc_types::TransactionRequest {
-        to: Some(handler),
-        data: Some(calldata),
+        to: Some(alloy_primitives::TxKind::Call(handler)),
+        input: TransactionInput::new(calldata),
         ..Default::default()
     };
     let pending = provider.send_transaction(request).await?;
@@ -129,8 +134,9 @@ async fn run_bundle_action(
     Ok(())
 }
 
-fn load_wallet(key: &str) -> Result<LocalWallet> {
-    LocalWallet::from_str(key).context("invalid private key")
+fn load_wallet(key: &str) -> Result<PrivateKeySigner> {
+    let pk_signer: PrivateKeySigner = key.parse()?;
+    Ok(pk_signer)
 }
 
 fn load_hex_or_path(value: &str) -> Result<Vec<u8>> {
@@ -161,8 +167,11 @@ fn load_proof(value: &str) -> Result<MessageInclusionProof> {
 fn decode_revert_reason(message: String) -> Option<String> {
     let hex_start = message.find("0x")?;
     let hex_data = &message[hex_start..];
+    let hex_end = hex_data.find('"').unwrap_or(hex_data.len());
+    let hex_data = &hex_data[..hex_end];
     let data = decode_hex(hex_data).ok()?;
     if data.len() < 4 {
+        println!("revert data too short, len={}", data.len());
         return None;
     }
     let selector = &data[..4];
@@ -174,10 +183,18 @@ fn decode_revert_reason(message: String) -> Option<String> {
         let code = U256::from_be_slice(&data[4..]);
         return Some(format!("panic({code})"));
     }
-    None
+    // selector to hex string
+    let selector_hex = hex::encode(selector);
+    error_selector_map()
+        .get(&selector_hex)
+        .map(|name| format!("revert: {}", name.to_string()))
+        .or_else(|| {
+            println!("unknown revert selector 0x{}", selector_hex);
+            None
+        })
 }
 
 fn decode_error_string(data: &[u8]) -> Result<String> {
-    let value: (String,) = <(String,)>::abi_decode(data, true)?;
+    let value: (String,) = <(String,)>::abi_decode(data)?;
     Ok(value.0)
 }
