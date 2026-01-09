@@ -157,8 +157,7 @@ pub struct RelayCommand {
 
 impl RelayCommand {
     pub async fn run(self, config: Config, addresses: AddressBook) -> Result<()> {
-        todo!();
-        //commands::relay::run(self.args, config, addresses).await
+        commands::relay::run(self.args, config, addresses).await
     }
 }
 

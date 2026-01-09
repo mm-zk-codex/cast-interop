@@ -12,9 +12,8 @@ use crate::types::{
     RelaySummary, BUNDLE_IDENTIFIER,
 };
 use alloy_primitives::{Address, Bytes, B256, U256};
-use alloy_provider::ProviderBuilder;
-use alloy_signer_wallet::LocalWallet;
-use alloy_transport_http::Http;
+use alloy_provider::{Provider, ProviderBuilder};
+use alloy_signer_local::PrivateKeySigner;
 use anyhow::{anyhow, Context, Result};
 use std::fs;
 use std::path::PathBuf;
@@ -61,17 +60,17 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
 
     require_signer_or_dry_run(wallet.is_some(), args.dry_run, "relay")?;
 
-    let source_client = RpcClient::new(&args.rpc_src)?;
-    let dest_client = RpcClient::new(&args.rpc_dest)?;
+    let source_client = RpcClient::new(&args.rpc_src).await?;
+    let dest_client = RpcClient::new(&args.rpc_dest).await?;
 
     let tx_hash =
         B256::from_str(&args.tx).with_context(|| format!("invalid tx hash {}", args.tx))?;
     let receipt = get_transaction_receipt(&source_client, tx_hash).await?;
     let mut bundle = None;
     let mut bundle_hash = None;
-    for log in receipt.logs.iter() {
-        if log.topics.first().copied() == Some(interop_bundle_sent_topic()) {
-            let (_, hash, interop_bundle) = decode_interop_bundle_sent(log.data.clone())?;
+    for log in receipt.logs().iter() {
+        if log.topics().first().copied() == Some(interop_bundle_sent_topic()) {
+            let (_, hash, interop_bundle) = decode_interop_bundle_sent(log.data().data.clone())?;
             bundle = Some(interop_bundle);
             bundle_hash = Some(hash);
             break;
@@ -147,12 +146,15 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
     } else {
         let wallet = wallet.expect("wallet required");
         let chain_id = dest_client.provider.get_chain_id().await?;
-        let wallet = wallet.with_chain_id(chain_id);
-        let transport = Http::new(args.rpc_dest.parse()?);
-        let provider = ProviderBuilder::new().wallet(wallet).on_http(transport);
+
+        let provider = ProviderBuilder::new()
+            .wallet(wallet)
+            .with_chain_id(chain_id)
+            .connect(&args.rpc_dest)
+            .await?;
         let request = alloy_rpc_types::TransactionRequest {
-            to: Some(handler),
-            data: Some(calldata),
+            to: Some(alloy_primitives::TxKind::Call(handler)),
+            input: alloy_rpc_types::TransactionInput::new(calldata),
             ..Default::default()
         };
         let pending = provider.send_transaction(request).await?;
@@ -181,7 +183,7 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
 async fn wait_for_root(
     client: &RpcClient,
     root_storage: Address,
-    chain_id: U256,
+    chain_id: u64,
     batch_number: u64,
     expected_root: String,
     timeout: Duration,
@@ -190,7 +192,7 @@ async fn wait_for_root(
     let expected = B256::from_str(&expected_root)?;
     let start = tokio::time::Instant::now();
     loop {
-        let data = encode_interop_roots_call(chain_id, U256::from(batch_number));
+        let data = encode_interop_roots_call(U256::from(chain_id), U256::from(batch_number));
         let result = eth_call(client, root_storage, data).await?;
         let root = crate::abi::decode_bytes32(result)?;
         if root != B256::ZERO {
@@ -214,7 +216,7 @@ async fn write_relay_outputs(
     bundle_hash: &B256,
     source_tx_hash: &B256,
     handler_tx_hash: Option<String>,
-    source_chain_id: &U256,
+    source_chain_id: &u64,
     dest_client: &RpcClient,
 ) -> Result<()> {
     fs::create_dir_all(&dir)?;
@@ -239,6 +241,7 @@ async fn write_relay_outputs(
     Ok(())
 }
 
-fn load_wallet(key: &str) -> Result<LocalWallet> {
-    LocalWallet::from_str(key).context("invalid private key")
+fn load_wallet(key: &str) -> Result<PrivateKeySigner> {
+    let pk_signer: PrivateKeySigner = key.parse()?;
+    Ok(pk_signer)
 }
