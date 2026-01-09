@@ -1,6 +1,7 @@
 use crate::types::{address_to_hex, b256_to_hex, format_hex, u256_to_string};
 use crate::types::{BundleAttributesView, InteropBundle, InteropBundleView as BundleView};
 use crate::types::{InteropCallView, MessageInclusionProof};
+use alloy_primitives::ruint::aliases::U256;
 use alloy_primitives::{keccak256, Address, Bytes, B256, U256 as AlloyU256, U8};
 use alloy_sol_types::{SolCall, SolValue};
 use anyhow::{anyhow, Result};
@@ -200,15 +201,15 @@ fn proof_to_sol(proof: MessageInclusionProof) -> Result<MessageInclusionProofSol
 }
 
 pub fn decode_bundle_status(data: Bytes) -> Result<u8> {
-    //let value: (u8,) = <(u8,)>::abi_decode(&data)?;
-    //Ok(value.0)
-    decode_u8(data)
+    let value: (U256,) = <(U256,)>::abi_decode(&data)?;
+    let tmp: u64 = value.0.try_into().unwrap();
+    Ok(tmp as u8)
 }
 
 pub fn decode_call_status(data: Bytes) -> Result<u8> {
-    //let value: (U8,) = <(U8,)>::abi_decode(&data)?;
-    //Ok(value.0)
-    decode_u8(data)
+    let value: (U256,) = <(U256,)>::abi_decode(&data)?;
+    let tmp: u64 = value.0.try_into().unwrap();
+    Ok(tmp as u8)
 }
 
 pub fn decode_bytes32(data: Bytes) -> Result<B256> {

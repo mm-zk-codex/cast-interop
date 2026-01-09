@@ -147,8 +147,7 @@ pub struct StatusCommand {
 
 impl StatusCommand {
     pub async fn run(self, config: Config, addresses: AddressBook) -> Result<()> {
-        todo!();
-        //commands::status::run(self.args, config, addresses).await
+        commands::status::run(self.args, config, addresses).await
     }
 }
 

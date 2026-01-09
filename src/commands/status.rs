@@ -10,7 +10,7 @@ use alloy_sol_types::SolValue;
 use anyhow::Result;
 
 pub async fn run(args: StatusArgs, _config: Config, addresses: AddressBook) -> Result<()> {
-    let client = RpcClient::new(&args.rpc)?;
+    let client = RpcClient::new(&args.rpc).await?;
     let bundle_hash = parse_b256(&args.bundle_hash)?;
     let call = encode_bundle_status_call(bundle_hash);
     let result = eth_call(&client, addresses.interop_handler, call).await?;
@@ -20,7 +20,8 @@ pub async fn run(args: StatusArgs, _config: Config, addresses: AddressBook) -> R
     let calls = if let Some(bundle_hex) = args.bundle.as_deref() {
         let bytes = load_hex_or_path(bundle_hex)?;
         let bundle: crate::types::InteropBundle =
-            crate::types::InteropBundle::abi_decode(&bytes, true)?;
+            crate::types::InteropBundle::abi_decode_params(&bytes)?;
+
         let mut statuses = Vec::new();
         for (idx, _) in bundle.calls.iter().enumerate() {
             let call = encode_call_status_call(bundle_hash, U256::from(idx));
