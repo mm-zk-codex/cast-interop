@@ -15,8 +15,9 @@ use anyhow::{Context, Result};
 use serde_json::json;
 use std::str::FromStr;
 
-pub async fn run(args: TxShowArgs, _config: Config, _addresses: AddressBook) -> Result<()> {
-    let client = RpcClient::new(&args.rpc).await?;
+pub async fn run(args: TxShowArgs, config: Config, _addresses: AddressBook) -> Result<()> {
+    let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
+    let client = RpcClient::new(&resolved.url).await?;
     let tx_hash = B256::from_str(&args.tx_hash)
         .with_context(|| format!("invalid tx hash {}", args.tx_hash))?;
     let receipt = get_transaction_receipt(&client, tx_hash).await?;

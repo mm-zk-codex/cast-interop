@@ -136,9 +136,19 @@ pub async fn raw_rpc<T: for<'de> Deserialize<'de>>(
 }
 
 pub async fn eth_call(client: &RpcClient, to: Address, data: Bytes) -> Result<Bytes> {
+    eth_call_with_value(client, to, data, None).await
+}
+
+pub async fn eth_call_with_value(
+    client: &RpcClient,
+    to: Address,
+    data: Bytes,
+    value: Option<alloy_primitives::U256>,
+) -> Result<Bytes> {
     let request = TransactionRequest {
         to: Some(to.into()),
         input: TransactionInput::new(data),
+        value,
         ..Default::default()
     };
     let result = client.provider.call(request).await?;

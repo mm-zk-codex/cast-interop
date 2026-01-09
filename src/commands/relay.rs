@@ -7,13 +7,13 @@ use crate::config::Config;
 use crate::rpc::{
     eth_call, get_transaction_receipt, wait_for_finalized_block, wait_for_log_proof, RpcClient,
 };
+use crate::signer::{load_signer, SignerOptions};
 use crate::types::{
     format_hex, require_signer_or_dry_run, AddressBook, MessageInclusionProof, ProofMessage,
     RelaySummary, BUNDLE_IDENTIFIER,
 };
 use alloy_primitives::{Address, Bytes, B256, U256};
 use alloy_provider::{Provider, ProviderBuilder};
-use alloy_signer_local::PrivateKeySigner;
 use anyhow::{anyhow, Context, Result};
 use std::fs;
 use std::path::PathBuf;
@@ -43,25 +43,21 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
         .context("invalid root storage address")?
         .unwrap_or(addresses.interop_root_storage);
 
-    if args.private_key.is_some() && args.private_key_env.is_some() {
-        anyhow::bail!("cannot set both --private-key and --private-key-env");
-    }
-    let private_key_env = args
-        .private_key_env
-        .clone()
-        .unwrap_or_else(|| config.signer_env());
-    let wallet = if let Some(key) = args.private_key.clone() {
-        Some(load_wallet(&key)?)
-    } else if let Ok(key) = std::env::var(private_key_env) {
-        Some(load_wallet(&key)?)
-    } else {
-        None
-    };
+    let wallet = load_signer(
+        SignerOptions {
+            private_key: args.signer.private_key.as_deref(),
+            private_key_env: args.signer.private_key_env.as_deref(),
+        },
+        &config,
+    )?;
 
     require_signer_or_dry_run(wallet.is_some(), args.dry_run, "relay")?;
 
-    let source_client = RpcClient::new(&args.rpc_src).await?;
-    let dest_client = RpcClient::new(&args.rpc_dest).await?;
+    let source_rpc = config.resolve_rpc(args.rpc_src.as_deref(), args.chain_src.as_deref())?;
+    let dest_rpc = config.resolve_rpc(args.rpc_dest.as_deref(), args.chain_dest.as_deref())?;
+
+    let source_client = RpcClient::new(&source_rpc.url).await?;
+    let dest_client = RpcClient::new(&dest_rpc.url).await?;
 
     let tx_hash =
         B256::from_str(&args.tx).with_context(|| format!("invalid tx hash {}", args.tx))?;
@@ -150,7 +146,7 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
         let provider = ProviderBuilder::new()
             .wallet(wallet)
             .with_chain_id(chain_id)
-            .connect(&args.rpc_dest)
+            .connect(&dest_rpc.url)
             .await?;
         let request = alloy_rpc_types::TransactionRequest {
             to: Some(alloy_primitives::TxKind::Call(handler)),
@@ -163,16 +159,26 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
         println!("sent tx: {tx_hash:#x}");
     }
 
+    let summary = RelaySummary {
+        source_chain_id: source_chain_id.to_string(),
+        destination_chain_id: dest_client.provider.get_chain_id().await?.to_string(),
+        l1_batch_number: proof.l1_batch_number,
+        l2_message_index: proof.l2_message_index,
+        bundle_hash: format!("{bundle_hash:#x}"),
+        source_tx_hash: format!("{tx_hash:#x}"),
+        handler_tx_hash: handler_tx_hash.clone(),
+    };
+
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&summary)?);
+    }
+
     if let Some(dir) = args.out_dir {
         write_relay_outputs(
             dir,
             &encoded_bundle,
             &proof,
-            &bundle_hash,
-            &tx_hash,
-            handler_tx_hash.clone(),
-            &source_chain_id,
-            &dest_client,
+            &summary,
         )
         .await?;
     }
@@ -213,35 +219,16 @@ async fn write_relay_outputs(
     dir: PathBuf,
     encoded_bundle: &Bytes,
     proof: &MessageInclusionProof,
-    bundle_hash: &B256,
-    source_tx_hash: &B256,
-    handler_tx_hash: Option<String>,
-    source_chain_id: &u64,
-    dest_client: &RpcClient,
+    summary: &RelaySummary,
 ) -> Result<()> {
     fs::create_dir_all(&dir)?;
     let bundle_hex = format_hex(&encoded_bundle.0);
     fs::write(dir.join("bundle.hex"), &bundle_hex)?;
     fs::write(dir.join("proof.json"), serde_json::to_string_pretty(proof)?)?;
 
-    let dest_chain_id = dest_client.provider.get_chain_id().await?;
-    let summary = RelaySummary {
-        source_chain_id: source_chain_id.to_string(),
-        destination_chain_id: dest_chain_id.to_string(),
-        l1_batch_number: proof.l1_batch_number,
-        l2_message_index: proof.l2_message_index,
-        bundle_hash: format!("{bundle_hash:#x}"),
-        source_tx_hash: format!("{source_tx_hash:#x}"),
-        handler_tx_hash,
-    };
     fs::write(
         dir.join("relay_summary.json"),
-        serde_json::to_string_pretty(&summary)?,
+        serde_json::to_string_pretty(summary)?,
     )?;
     Ok(())
-}
-
-fn load_wallet(key: &str) -> Result<PrivateKeySigner> {
-    let pk_signer: PrivateKeySigner = key.parse()?;
-    Ok(pk_signer)
 }

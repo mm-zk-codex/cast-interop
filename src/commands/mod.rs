@@ -1,7 +1,15 @@
 pub mod bundle_action;
 pub mod bundle_extract;
+pub mod chains;
+pub mod contracts;
+pub mod doctor;
+pub mod encode;
+pub mod explain;
 pub mod proof;
+pub mod rpc_ping;
 pub mod relay;
 pub mod root_wait;
+pub mod send;
 pub mod status;
 pub mod tx_show;
+pub mod watch;

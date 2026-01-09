@@ -11,8 +11,9 @@ use std::fs;
 use std::str::FromStr;
 use std::time::Duration;
 
-pub async fn run(args: ProofArgs, _config: Config, addresses: AddressBook) -> Result<()> {
-    let client = RpcClient::new(&args.rpc).await?;
+pub async fn run(args: ProofArgs, config: Config, addresses: AddressBook) -> Result<()> {
+    let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
+    let client = RpcClient::new(&resolved.url).await?;
     let tx_hash =
         B256::from_str(&args.tx).with_context(|| format!("invalid tx hash {}", args.tx))?;
     let receipt = get_transaction_receipt(&client, tx_hash).await?;

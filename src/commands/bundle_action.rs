@@ -2,6 +2,7 @@ use crate::abi::{encode_execute_bundle_call, encode_verify_bundle_call, error_se
 use crate::cli::BundleActionArgs;
 use crate::config::Config;
 use crate::rpc::{eth_call, RpcClient};
+use crate::signer::{load_signer, SignerOptions};
 use crate::types::{
     require_signer_or_dry_run, AddressBook, MessageInclusionProof, BUNDLE_IDENTIFIER,
 };
@@ -13,8 +14,6 @@ use anyhow::{anyhow, Context, Result};
 use std::fs;
 use std::path::Path;
 use std::str::FromStr;
-
-use alloy_signer_local::PrivateKeySigner;
 
 pub async fn run_verify(
     args: BundleActionArgs,
@@ -54,22 +53,13 @@ async fn run_bundle_action(
         .context("invalid center address")?
         .unwrap_or(addresses.interop_center);
 
-    if args.private_key.is_some() && args.private_key_env.is_some() {
-        anyhow::bail!("cannot set both --private-key and --private-key-env");
-    }
-
-    let private_key_env = args
-        .private_key_env
-        .clone()
-        .unwrap_or_else(|| config.signer_env());
-
-    let wallet = if let Some(key) = args.private_key.clone() {
-        Some(load_wallet(&key)?)
-    } else if let Ok(key) = std::env::var(private_key_env) {
-        Some(load_wallet(&key)?)
-    } else {
-        None
-    };
+    let wallet = load_signer(
+        SignerOptions {
+            private_key: args.signer.private_key.as_deref(),
+            private_key_env: args.signer.private_key_env.as_deref(),
+        },
+        &config,
+    )?;
 
     require_signer_or_dry_run(wallet.is_some(), args.dry_run, cmd)?;
 
@@ -96,7 +86,8 @@ async fn run_bundle_action(
         encode_execute_bundle_call(Bytes::from(encoded_bundle.clone()), proof.clone())?
     };
 
-    let client = RpcClient::new(&args.rpc).await?;
+    let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
+    let client = RpcClient::new(&resolved.url).await?;
     if args.dry_run {
         match eth_call(&client, handler, calldata.clone()).await {
             Ok(_) => {
@@ -119,7 +110,7 @@ async fn run_bundle_action(
     let provider = ProviderBuilder::new()
         .wallet(wallet)
         .with_chain_id(chain_id)
-        .connect(&args.rpc)
+        .connect(&resolved.url)
         .await?;
 
     let request = alloy_rpc_types::TransactionRequest {
@@ -131,11 +122,6 @@ async fn run_bundle_action(
     let tx_hash = pending.tx_hash();
     println!("sent tx: {tx_hash:#x}");
     Ok(())
-}
-
-fn load_wallet(key: &str) -> Result<PrivateKeySigner> {
-    let pk_signer: PrivateKeySigner = key.parse()?;
-    Ok(pk_signer)
 }
 
 fn load_hex_or_path(value: &str) -> Result<Vec<u8>> {
