@@ -115,8 +115,7 @@ pub struct ProofCommand {
 
 impl ProofCommand {
     pub async fn run(self, config: Config, addresses: AddressBook) -> Result<()> {
-        todo!();
-        //commands::proof::run(self.args, config, addresses).await
+        commands::proof::run(self.args, config, addresses).await
     }
 }
 

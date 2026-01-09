@@ -84,11 +84,7 @@ pub async fn get_log_proof(
 ) -> Result<Option<LogProof>> {
     let hash_hex = format!("{tx_hash:#x}");
     let params = json!([hash_hex, msg_index]);
-    if let Ok(result) = raw_rpc::<Option<LogProof>>(client, "zks_getLogProof", params.clone()).await
-    {
-        return Ok(result);
-    }
-    raw_rpc::<Option<LogProof>>(client, "getLogProof", params).await
+    raw_rpc::<Option<LogProof>>(client, "zks_getL2ToL1LogProof", params.clone()).await
 }
 
 pub async fn wait_for_log_proof(

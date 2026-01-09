@@ -5,13 +5,14 @@ use crate::rpc::{
 };
 use crate::types::{AddressBook, MessageInclusionProof, ProofMessage};
 use alloy_primitives::B256;
+use alloy_provider::Provider;
 use anyhow::{Context, Result};
 use std::fs;
 use std::str::FromStr;
 use std::time::Duration;
 
 pub async fn run(args: ProofArgs, _config: Config, addresses: AddressBook) -> Result<()> {
-    let client = RpcClient::new(&args.rpc)?;
+    let client = RpcClient::new(&args.rpc).await?;
     let tx_hash =
         B256::from_str(&args.tx).with_context(|| format!("invalid tx hash {}", args.tx))?;
     let receipt = get_transaction_receipt(&client, tx_hash).await?;
@@ -52,6 +53,8 @@ pub async fn run(args: ProofArgs, _config: Config, addresses: AddressBook) -> Re
         message,
         proof: log_proof.proof.clone(),
     };
+
+    println!("Message inclusion proof obtained:");
 
     if args.json || args.out.is_some() {
         let json = serde_json::to_string_pretty(&output)?;
