@@ -224,6 +224,58 @@ cast-interop send bundle \
   --private-key $PRIVATE_KEY
 ```
 
+### Token bridging (minimal)
+
+Send an ERC20 via interop (Type B flow):
+
+```bash
+cast-interop token send \
+  --chain-src era \
+  --chain-dest test \
+  --token 0xTokenOnSource \
+  --amount 100 \
+  --to 0xRecipientOnDest \
+  --private-key $PRIVATE_KEY
+```
+
+Dry-run (simulate only):
+
+```bash
+cast-interop token send \
+  --chain-src era \
+  --chain-dest test \
+  --token 0xTokenOnSource \
+  --amount-wei 1000000000000000000 \
+  --to 0xRecipientOnDest \
+  --dry-run
+```
+
+Check wrap info and destination balance:
+
+```bash
+cast-interop token wrap-info \
+  --chain-src era \
+  --chain-dest test \
+  --token 0xTokenOnSource
+
+cast-interop token status \
+  --chain-src era \
+  --chain-dest test \
+  --token 0xTokenOnSource \
+  --to 0xRecipientOnDest
+```
+
+Debug checklist for stuck transfers:
+
+```bash
+cast-interop tx show --chain era 0xSOURCE_TX_HASH
+cast-interop proof --chain era --tx 0xSOURCE_TX_HASH
+cast-interop root wait --chain test --source-chain 324 --batch <batch> --expected-root <root>
+cast-interop relay --chain-src era --chain-dest test --tx 0xSOURCE_TX_HASH --mode execute
+cast-interop explain --chain test --bundle <bundle.hex> --proof <proof.json>
+cast-interop doctor --chain test
+```
+
 ### Watch progress
 
 ```bash
