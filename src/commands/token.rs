@@ -533,7 +533,7 @@ fn build_second_bridge_calldata(
 ) -> Result<Bytes> {
     let asset_id_b256 = B256::from_slice(asset_id.as_ref());
     let transfer_data = (amount, receiver, maybe_token_address).abi_encode();
-    let bridge_data = (asset_id_b256, Bytes::from(transfer_data)).abi_encode();
+    let bridge_data = (asset_id_b256, Bytes::from(transfer_data)).abi_encode_params();
     let mut out = Vec::with_capacity(1 + bridge_data.len());
     out.push(NEW_ENCODING_VERSION);
     out.extend_from_slice(&bridge_data);

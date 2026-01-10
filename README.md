@@ -2,6 +2,37 @@
 
 `cast-interop` is a cast-like CLI focused on zkSync interop workflows. It helps you extract bundles, fetch proofs, wait for roots, and execute/verify bundles across chains without wiring up the RPC or ABI plumbing every time.
 
+
+## Quick start
+
+Sending token from chain A to chain B:
+
+```shell
+cast-interop token send --token $TOKEN_ADDRESS --to $ADDRESS --rpc-src $RPC_A   --rpc-dest $RPC_B --private-key $PRIVATE_KEY --amount-wei $AMOUNT
+```
+(see examples/02_token/README.md for more details)
+
+Viewing interop bundles/messages created by a given transaction:
+
+```shell
+
+cast-interop tx show --rpc $RPC $TX_HASH
+```
+
+Relaying all the bundles from transaction from chain A to chain B:
+
+```shell
+cast-interop relay --rpc-src $RPC_A --rpc-dest $RPC_B --tx $TX_HASH --private-key $PRIVATE_KEY
+```
+
+Sending bundle with a single remote-call message:
+
+```shell
+cast-interop send message --to-chain $DESTINATION_CHAIN_ID  --to $CONTRACT_ADDR  --rpc $RPC_A  --payload-file /tmp/message  --private-key $PRIVATE_KEY
+```
+(see examples/01_greeting/README.md for more details)
+
+
 ## Installation
 
 ```bash
