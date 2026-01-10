@@ -4,6 +4,7 @@ use crate::encode::decode_evm_v1_address;
 use crate::rpc::RpcClient;
 use crate::signer::{load_signer, signer_address, SignerOptions};
 use crate::types::{AddressBook, MessageInclusionProof};
+use alloy_dyn_abi::SolType;
 use alloy_primitives::{Address, Bytes, U256};
 use alloy_provider::Provider;
 use anyhow::{anyhow, Context, Result};
@@ -25,8 +26,9 @@ pub async fn run(args: ExplainArgs, config: Config, addresses: AddressBook) -> R
     let chain_id = client.provider.get_chain_id().await?;
 
     let bundle_bytes = load_hex_or_path(&args.bundle)?;
-    let bundle: crate::types::InteropBundle = crate::types::InteropBundle::abi_decode(&bundle_bytes)
-        .context("failed to decode bundle")?;
+    let bundle: crate::types::InteropBundle =
+        crate::types::InteropBundle::abi_decode(&bundle_bytes)
+            .context("failed to decode bundle")?;
     let proof = load_proof(&args.proof)?;
 
     let signer = load_signer(
@@ -137,7 +139,10 @@ fn check_destination_chain(bundle: &crate::types::InteropBundle, chain_id: u64) 
     }
 }
 
-fn check_source_chain(bundle: &crate::types::InteropBundle, proof: &MessageInclusionProof) -> ExplainItem {
+fn check_source_chain(
+    bundle: &crate::types::InteropBundle,
+    proof: &MessageInclusionProof,
+) -> ExplainItem {
     let proof_chain = proof.chain_id.clone();
     let bundle_chain = bundle.sourceChainId.to_string();
     if bundle_chain == proof_chain {

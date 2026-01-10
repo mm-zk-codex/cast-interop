@@ -1,7 +1,7 @@
 use crate::types::{bytes_from_hex, parse_address};
 use alloy_primitives::{keccak256, Address, Bytes, U256};
-use alloy_sol_types::SolValue;
-use anyhow::{anyhow, Result};
+use alloy_sol_types::{SolCall, SolValue};
+use anyhow::Result;
 
 alloy_sol_types::sol! {
     function interopCallValue(uint256 _interopCallValue);
@@ -77,10 +77,10 @@ pub fn parse_payload(
 ) -> Result<Bytes> {
     match (payload, payload_file) {
         (Some(_), Some(_)) => anyhow::bail!("cannot set both --payload and --payload-file"),
-        (Some(payload), None) => bytes_from_hex(payload).map(|b| b.0),
+        (Some(payload), None) => bytes_from_hex(payload),
         (None, Some(path)) => {
             let contents = std::fs::read_to_string(path)?;
-            bytes_from_hex(&contents).map(|b| b.0)
+            bytes_from_hex(&contents)
         }
         (None, None) => anyhow::bail!("payload required (set --payload or --payload-file)"),
     }

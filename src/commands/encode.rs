@@ -28,7 +28,7 @@ pub async fn run_7930(
         }
         let address = parse_address(&address_only)?;
         encode_evm_v1_address_only(address)
-    } else if let (Some(chain_id), Some(address)) = (args.chain_id, args.address) {
+    } else if let (Some(chain_id), Some(address)) = (args.chain_id.clone(), args.address) {
         let chain_id = parse_u256(&chain_id)?;
         let address = parse_address(&address)?;
         encode_evm_v1_with_address(chain_id, address)

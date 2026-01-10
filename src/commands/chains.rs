@@ -2,7 +2,6 @@ use crate::cli::{ChainsAddArgs, ChainsListArgs, ChainsRemoveArgs};
 use crate::config::{ChainConfig, Config};
 use crate::rpc::RpcClient;
 use crate::types::AddressBook;
-use alloy_primitives::U256;
 use alloy_provider::Provider;
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
@@ -52,7 +51,11 @@ pub async fn run_list(args: ChainsListArgs, config: Config, _addresses: AddressB
     Ok(())
 }
 
-pub async fn run_add(args: ChainsAddArgs, mut config: Config, _addresses: AddressBook) -> Result<()> {
+pub async fn run_add(
+    args: ChainsAddArgs,
+    mut config: Config,
+    _addresses: AddressBook,
+) -> Result<()> {
     let rpc = args.rpc.trim();
     let client = RpcClient::new(rpc).await?;
     let chain_id = client
@@ -121,8 +124,8 @@ fn legacy_chains(config: &Config) -> BTreeMap<String, ChainConfig> {
 
 async fn probe_chain_id(cfg: &ChainConfig) -> Result<u64> {
     let client = RpcClient::new(&cfg.rpc).await?;
-    let chain_id: U256 = client.provider.get_chain_id().await?;
-    u64::try_from(chain_id).map_err(|_| anyhow!("chainId too large"))
+    let chain = client.provider.get_chain_id().await?;
+    Ok(chain)
 }
 
 fn redact_url(value: &str) -> String {

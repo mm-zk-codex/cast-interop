@@ -24,39 +24,52 @@ pub async fn run(args: ContractsArgs, config: Config, addresses: AddressBook) ->
 
     let abi_dir = config.abi_dir();
     let mut rows = Vec::new();
-    rows.push(build_row(
-        "interop_center",
-        addresses.interop_center,
-        &client,
-        &abi_dir,
-        "InteropCenter.json",
-    )
-    .await?);
-    rows.push(build_row(
-        "interop_handler",
-        addresses.interop_handler,
-        &client,
-        &abi_dir,
-        "InteropHandler.json",
-    )
-    .await?);
-    rows.push(build_row(
-        "interop_root_storage",
-        addresses.interop_root_storage,
-        &client,
-        &abi_dir,
-        "MessageVerification.json",
-    )
-    .await?);
+    rows.push(
+        build_row(
+            "interop_center",
+            addresses.interop_center,
+            &client,
+            &abi_dir,
+            "InteropCenter.json",
+        )
+        .await?,
+    );
+    rows.push(
+        build_row(
+            "interop_handler",
+            addresses.interop_handler,
+            &client,
+            &abi_dir,
+            "InteropHandler.json",
+        )
+        .await?,
+    );
+    rows.push(
+        build_row(
+            "interop_root_storage",
+            addresses.interop_root_storage,
+            &client,
+            &abi_dir,
+            "MessageVerification.json",
+        )
+        .await?,
+    );
 
     if args.json {
         println!("{}", serde_json::to_string_pretty(&rows)?);
         return Ok(());
     }
 
-    println!("{:<22} {:<44} {:<10} {}", "name", "address", "codeLen", "abi");
+    println!(
+        "{:<22} {:<44} {:<10} {}",
+        "name", "address", "codeLen", "abi"
+    );
     for row in rows {
-        let deployed = if row.deployed { "deployed" } else { "NOT DEPLOYED" };
+        let deployed = if row.deployed {
+            "deployed"
+        } else {
+            "NOT DEPLOYED"
+        };
         let abi = if row.abi_found { "yes" } else { "no" };
         println!(
             "{:<22} {:<44} {:<10} {}",
@@ -77,7 +90,7 @@ async fn build_row(
     abi_dir: &PathBuf,
     abi_file: &str,
 ) -> Result<ContractRow> {
-    let code = client.provider.get_code(address).await?;
+    let code = client.provider.get_code_at(address).await?;
     let code_len = code.len() as u64;
     let deployed = code_len > 0;
     let abi_found = abi_dir.join(abi_file).exists();

@@ -12,7 +12,7 @@ use crate::types::{parse_address, parse_u256, require_signer_or_dry_run, Address
 use alloy_primitives::{Address, Bytes, B256, U256};
 use alloy_provider::{Provider, ProviderBuilder};
 use alloy_rpc_types::{TransactionInput, TransactionRequest};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use serde::Deserialize;
 use serde::Serialize;
 use std::fs;
@@ -21,7 +21,7 @@ use std::fs;
 #[serde(rename_all = "camelCase")]
 struct SendOutput {
     tx_hash: String,
-    status: Option<u64>,
+    status: bool,
     send_id: Option<String>,
     bundle_hash: Option<String>,
 }
@@ -109,14 +109,14 @@ pub async fn run_message(
         ..Default::default()
     };
     let pending = provider.send_transaction(request).await?;
-    let tx_hash = pending.tx_hash();
+    let tx_hash = pending.tx_hash().clone();
     let receipt = pending.get_receipt().await?;
 
     let send_id = extract_send_id(receipt.logs(), addresses.interop_center);
 
     let output = SendOutput {
         tx_hash: format!("{tx_hash:#x}"),
-        status: receipt.status,
+        status: receipt.status(),
         send_id: send_id.map(|id| format!("{id:#x}")),
         bundle_hash: None,
     };
@@ -125,13 +125,7 @@ pub async fn run_message(
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
         println!("tx hash: {}", output.tx_hash);
-        println!(
-            "status: {}",
-            output
-                .status
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "unknown".to_string())
-        );
+        println!("status: {}", output.status);
         if let Some(send_id) = output.send_id {
             println!("sendId: {send_id}");
         }
@@ -202,14 +196,14 @@ pub async fn run_bundle(
         ..Default::default()
     };
     let pending = provider.send_transaction(request).await?;
-    let tx_hash = pending.tx_hash();
+    let tx_hash = pending.tx_hash().clone();
     let receipt = pending.get_receipt().await?;
 
     let bundle_hash = extract_bundle_hash(receipt.logs(), addresses.interop_center);
 
     let output = SendOutput {
         tx_hash: format!("{tx_hash:#x}"),
-        status: receipt.status,
+        status: receipt.status(),
         send_id: None,
         bundle_hash: bundle_hash.map(|hash| format!("{hash:#x}")),
     };
@@ -218,13 +212,7 @@ pub async fn run_bundle(
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
         println!("tx hash: {}", output.tx_hash);
-        println!(
-            "status: {}",
-            output
-                .status
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "unknown".to_string())
-        );
+        println!("status: {}", output.status);
         if let Some(bundle_hash) = output.bundle_hash {
             println!("bundleHash: {bundle_hash}");
         }
@@ -289,9 +277,7 @@ fn build_call_starters(calls: &[CallEntry]) -> Result<(Vec<crate::abi::InteropCa
     Ok((starters, total_value))
 }
 
-fn build_call_attributes(
-    attributes: Option<&CallAttributesEntry>,
-) -> Result<(Vec<Bytes>, U256)> {
+fn build_call_attributes(attributes: Option<&CallAttributesEntry>) -> Result<(Vec<Bytes>, U256)> {
     let mut output = Vec::new();
     let mut value = U256::ZERO;
 
@@ -346,7 +332,9 @@ fn load_calls(path: &std::path::Path) -> Result<CallFile> {
 
 fn extract_send_id(logs: &[alloy_rpc_types::Log], center: Address) -> Option<B256> {
     for log in logs {
-        if log.address() == center && log.topics().first().copied() == Some(crate::abi::message_sent_topic()) {
+        if log.address() == center
+            && log.topics().first().copied() == Some(crate::abi::message_sent_topic())
+        {
             return log.topics().get(1).copied();
         }
     }

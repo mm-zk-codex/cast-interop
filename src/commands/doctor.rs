@@ -74,7 +74,10 @@ pub async fn run(args: DoctorArgs, config: Config, addresses: AddressBook) -> Re
     let proof_check = raw_rpc::<serde_json::Value>(
         &client,
         "zks_getL2ToL1LogProof",
-        json!(["0x0000000000000000000000000000000000000000000000000000000000000000", 0]),
+        json!([
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            0
+        ]),
     )
     .await;
     match proof_check {
@@ -86,27 +89,31 @@ pub async fn run(args: DoctorArgs, config: Config, addresses: AddressBook) -> Re
         }),
         Err(err) => {
             let message = err.to_string();
-            let status = if message.contains("Method not found") || message.contains("method not found") {
-                "warn"
-            } else {
-                "warn"
-            };
+            let status =
+                if message.contains("Method not found") || message.contains("method not found") {
+                    "warn"
+                } else {
+                    "warn"
+                };
             checks.push(DoctorCheck {
                 name: "get_log_proof".to_string(),
                 status: status.to_string(),
                 details: format!("log proof call failed: {message}"),
-                hint: Some(
-                    "RPC must support zks_getL2ToL1LogProof to fetch proofs.".to_string(),
-                ),
+                hint: Some("RPC must support zks_getL2ToL1LogProof to fetch proofs.".to_string()),
             });
         }
     }
 
+    checks
+        .extend(check_contract("interop_center", addresses.interop_center, &client, &config).await);
     checks.extend(
-        check_contract("interop_center", addresses.interop_center, &client, &config).await,
-    );
-    checks.extend(
-        check_contract("interop_handler", addresses.interop_handler, &client, &config).await,
+        check_contract(
+            "interop_handler",
+            addresses.interop_handler,
+            &client,
+            &config,
+        )
+        .await,
     );
     checks.extend(
         check_contract(
@@ -128,7 +135,7 @@ async fn check_contract(
     config: &Config,
 ) -> Vec<DoctorCheck> {
     let mut checks = Vec::new();
-    let code = client.provider.get_code(address).await;
+    let code = client.provider.get_code_at(address).await;
     match code {
         Ok(code) => {
             if code.is_empty() {
