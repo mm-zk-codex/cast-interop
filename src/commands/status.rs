@@ -9,6 +9,9 @@ use alloy_primitives::U256;
 use alloy_sol_types::SolValue;
 use anyhow::Result;
 
+/// Fetch bundle status (and optional per-call status) from the handler.
+///
+/// Use this to verify whether a bundle has been verified or executed.
 pub async fn run(args: StatusArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
     let client = RpcClient::new(&resolved.url).await?;
@@ -62,6 +65,7 @@ pub async fn run(args: StatusArgs, config: Config, addresses: AddressBook) -> Re
     Ok(())
 }
 
+/// Load a bundle hex string from inline text or file.
 fn load_hex_or_path(value: &str) -> Result<Vec<u8>> {
     if std::path::Path::new(value).exists() {
         let contents = std::fs::read_to_string(value)?;
@@ -70,6 +74,7 @@ fn load_hex_or_path(value: &str) -> Result<Vec<u8>> {
     bytes_from_hex(value).map(|bytes| bytes.0.to_vec())
 }
 
+/// Render a bundle status enum into a readable string.
 fn bundle_status_string(value: u8) -> String {
     match value {
         0 => "Unreceived",
@@ -81,6 +86,7 @@ fn bundle_status_string(value: u8) -> String {
     .to_string()
 }
 
+/// Render a call status enum into a readable string.
 fn call_status_string(value: u8) -> String {
     match value {
         0 => "Unprocessed",

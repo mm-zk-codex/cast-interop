@@ -8,6 +8,9 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::str::FromStr;
 
+/// Extract an encoded bundle from an interop transaction.
+///
+/// Scans for InteropBundleSent logs and prints/writes the encoded bundle.
 pub async fn run(args: BundleExtractArgs, config: Config, _addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
     let client = RpcClient::new(&resolved.url).await?;

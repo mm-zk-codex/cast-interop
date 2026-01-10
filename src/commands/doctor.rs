@@ -16,6 +16,9 @@ struct DoctorCheck {
     hint: Option<String>,
 }
 
+/// Run a diagnostic checklist for RPC and contract readiness.
+///
+/// Reports RPC reachability, log proof support, and ABI availability.
 pub async fn run(args: DoctorArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
 
@@ -128,6 +131,7 @@ pub async fn run(args: DoctorArgs, config: Config, addresses: AddressBook) -> Re
     output_checks(args.json, checks)
 }
 
+/// Check contract deployment and ABI presence for a named interop contract.
 async fn check_contract(
     name: &str,
     address: alloy_primitives::Address,
@@ -191,6 +195,7 @@ async fn check_contract(
     checks
 }
 
+/// Render diagnostic checks as JSON or a readable list.
 fn output_checks(json: bool, checks: Vec<DoctorCheck>) -> Result<()> {
     if json {
         println!("{}", serde_json::to_string_pretty(&checks)?);

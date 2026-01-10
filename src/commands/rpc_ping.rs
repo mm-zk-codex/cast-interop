@@ -16,6 +16,9 @@ struct RpcPingOutput {
     client_version: Option<String>,
 }
 
+/// Check RPC connectivity and feature support.
+///
+/// Reports chain ID, latest/finalized blocks, and client version.
 pub async fn run(args: RpcPingArgs, config: Config, _addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
     let client = RpcClient::new(&resolved.url).await?;

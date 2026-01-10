@@ -20,6 +20,9 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
+/// Relay a bundle end-to-end across chains.
+///
+/// Fetches the source proof, waits for the root, then verifies/executes on the destination.
 pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let handler = args
         .handler
@@ -180,6 +183,7 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
     Ok(())
 }
 
+/// Wait for the expected interop root to appear on the destination chain.
 async fn wait_for_root(
     client: &RpcClient,
     root_storage: Address,
@@ -214,6 +218,7 @@ async fn wait_for_root(
     }
 }
 
+/// Write relay artifacts (bundle, proof, summary) to a directory.
 async fn write_relay_outputs(
     dir: PathBuf,
     encoded_bundle: &Bytes,

@@ -15,6 +15,9 @@ use std::fs;
 use std::path::Path;
 use std::str::FromStr;
 
+/// Verify a bundle proof on the destination chain.
+///
+/// This submits a verify call and reports the transaction hash or dry-run result.
 pub async fn run_verify(
     args: BundleActionArgs,
     config: Config,
@@ -23,6 +26,9 @@ pub async fn run_verify(
     run_bundle_action("bundle verify", args, config, addresses, true).await
 }
 
+/// Execute a bundle proof on the destination chain.
+///
+/// This submits an execute call and reports the transaction hash or dry-run result.
 pub async fn run_execute(
     args: BundleActionArgs,
     config: Config,
@@ -31,6 +37,9 @@ pub async fn run_execute(
     run_bundle_action("bundle execute", args, config, addresses, false).await
 }
 
+/// Shared implementation for bundle verify/execute flows.
+///
+/// Handles proof loading, sender normalization, and dry-run behavior.
 async fn run_bundle_action(
     cmd: &str,
     args: BundleActionArgs,
@@ -124,6 +133,7 @@ async fn run_bundle_action(
     Ok(())
 }
 
+/// Load a hex string or read hex contents from a file path.
 fn load_hex_or_path(value: &str) -> Result<Vec<u8>> {
     if Path::new(value).exists() {
         let contents = fs::read_to_string(value)?;
@@ -132,12 +142,14 @@ fn load_hex_or_path(value: &str) -> Result<Vec<u8>> {
     decode_hex(value)
 }
 
+/// Decode a hex string, stripping a 0x prefix if present.
 fn decode_hex(value: &str) -> Result<Vec<u8>> {
     let trimmed = value.trim();
     let raw = trimmed.strip_prefix("0x").unwrap_or(trimmed);
     hex::decode(raw).map_err(|err| anyhow!("invalid hex {value}: {err}"))
 }
 
+/// Load a MessageInclusionProof from a JSON string or file path.
 fn load_proof(value: &str) -> Result<MessageInclusionProof> {
     if Path::new(value).exists() {
         let contents = fs::read_to_string(value)?;
@@ -149,6 +161,7 @@ fn load_proof(value: &str) -> Result<MessageInclusionProof> {
     anyhow::bail!("proof must be a JSON string or path")
 }
 
+/// Decode a revert reason from an error string, if present.
 fn decode_revert_reason(message: String) -> Option<String> {
     let hex_start = message.find("0x")?;
     let hex_data = &message[hex_start..];
@@ -179,6 +192,7 @@ fn decode_revert_reason(message: String) -> Option<String> {
         })
 }
 
+/// Decode an ABI-encoded revert string payload.
 fn decode_error_string(data: &[u8]) -> Result<String> {
     let value: (String,) = <(String,)>::abi_decode(data)?;
     Ok(value.0)

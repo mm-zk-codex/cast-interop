@@ -45,6 +45,9 @@ struct CallAttributesEntry {
     indirect: Option<String>,
 }
 
+/// Send a single interop message from the source chain.
+///
+/// Builds call attributes, sends the transaction, and prints the sendId.
 pub async fn run_message(
     args: SendMessageArgs,
     config: Config,
@@ -134,6 +137,9 @@ pub async fn run_message(
     Ok(())
 }
 
+/// Send a bundle of interop calls from the source chain.
+///
+/// Reads calls.json, builds call starters, and prints the bundle hash.
 pub async fn run_bundle(
     args: SendBundleArgs,
     config: Config,
@@ -220,6 +226,7 @@ pub async fn run_bundle(
     Ok(())
 }
 
+/// Build attribute bytes for an interop message.
 fn build_message_attributes(args: &SendMessageArgs, dest_chain_id: U256) -> Result<Vec<Bytes>> {
     let mut attributes: Vec<Bytes> = Vec::new();
     if let Some(value) = args.interop_value.as_deref() {
@@ -248,6 +255,7 @@ fn build_message_attributes(args: &SendMessageArgs, dest_chain_id: U256) -> Resu
     Ok(attributes)
 }
 
+/// Sum the interop and indirect message values.
 fn message_value(args: &SendMessageArgs) -> Result<U256> {
     let mut total = U256::ZERO;
     if let Some(value) = args.interop_value.as_deref() {
@@ -259,6 +267,7 @@ fn message_value(args: &SendMessageArgs) -> Result<U256> {
     Ok(total)
 }
 
+/// Build interop call starters from a calls.json payload.
 fn build_call_starters(calls: &[CallEntry]) -> Result<(Vec<crate::abi::InteropCallStarter>, U256)> {
     let mut starters = Vec::new();
     let mut total_value = U256::ZERO;
@@ -277,6 +286,7 @@ fn build_call_starters(calls: &[CallEntry]) -> Result<(Vec<crate::abi::InteropCa
     Ok((starters, total_value))
 }
 
+/// Build per-call attributes and aggregate their value.
 fn build_call_attributes(attributes: Option<&CallAttributesEntry>) -> Result<(Vec<Bytes>, U256)> {
     let mut output = Vec::new();
     let mut value = U256::ZERO;
@@ -297,6 +307,7 @@ fn build_call_attributes(attributes: Option<&CallAttributesEntry>) -> Result<(Ve
     Ok((output, value))
 }
 
+/// Build bundle-level attributes for execution and unbundler permissions.
 fn build_bundle_attributes(args: &SendBundleArgs, dest_chain_id: U256) -> Result<Vec<Bytes>> {
     let mut attributes = Vec::new();
 
@@ -321,6 +332,7 @@ fn build_bundle_attributes(args: &SendBundleArgs, dest_chain_id: U256) -> Result
     Ok(attributes)
 }
 
+/// Load and validate a calls.json payload.
 fn load_calls(path: &std::path::Path) -> Result<CallFile> {
     let contents = fs::read_to_string(path).context("failed to read calls.json")?;
     let file: CallFile = serde_json::from_str(&contents).context("invalid calls.json")?;
@@ -330,6 +342,7 @@ fn load_calls(path: &std::path::Path) -> Result<CallFile> {
     Ok(file)
 }
 
+/// Extract the sendId from MessageSent logs.
 fn extract_send_id(logs: &[alloy_rpc_types::Log], center: Address) -> Option<B256> {
     for log in logs {
         if log.address() == center
@@ -341,6 +354,7 @@ fn extract_send_id(logs: &[alloy_rpc_types::Log], center: Address) -> Option<B25
     None
 }
 
+/// Extract the bundle hash from InteropBundleSent logs.
 fn extract_bundle_hash(logs: &[alloy_rpc_types::Log], center: Address) -> Option<B256> {
     for log in logs {
         if log.address() == center

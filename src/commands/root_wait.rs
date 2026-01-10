@@ -7,6 +7,9 @@ use alloy_primitives::{B256, U256};
 use anyhow::Result;
 use std::time::Duration;
 
+/// Wait until an expected interop root appears on the destination chain.
+///
+/// Polls interopRoots(chainId, batchNumber) until timeout or match.
 pub async fn run(args: RootWaitArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
     let client = RpcClient::new(&resolved.url).await?;

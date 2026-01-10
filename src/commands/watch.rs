@@ -18,6 +18,9 @@ struct WatchEvent {
     details: serde_json::Value,
 }
 
+/// Watch a transaction until proof/root/bundle status updates arrive.
+///
+/// Emits events as finalization, log proofs, roots, and bundle status change.
 pub async fn run(args: WatchArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let src_rpc = config.resolve_rpc(args.rpc_src.as_deref(), args.chain_src.as_deref())?;
     let dest_rpc = config.resolve_rpc(args.rpc_dest.as_deref(), args.chain_dest.as_deref())?;
@@ -124,6 +127,7 @@ pub async fn run(args: WatchArgs, config: Config, addresses: AddressBook) -> Res
     }
 }
 
+/// Emit a watch event as JSON or human-readable text.
 fn emit_event(json: bool, name: &str, details: serde_json::Value) {
     if json {
         let event = WatchEvent {
@@ -139,6 +143,7 @@ fn emit_event(json: bool, name: &str, details: serde_json::Value) {
     }
 }
 
+/// Check if the expected root has been published on the destination chain.
 async fn fetch_root(
     dest_client: &RpcClient,
     root_storage: alloy_primitives::Address,
@@ -153,6 +158,7 @@ async fn fetch_root(
     Ok(root != B256::ZERO && format!("{root:#x}").eq_ignore_ascii_case(expected_root))
 }
 
+/// Fetch the current bundle status from the handler contract.
 async fn fetch_bundle_status(
     client: &RpcClient,
     handler: alloy_primitives::Address,
@@ -163,6 +169,7 @@ async fn fetch_bundle_status(
     decode_bundle_status(data)
 }
 
+/// Extract a bundle hash from an InteropBundleSent log, if present.
 fn extract_bundle_hash(receipt: &alloy_rpc_types::TransactionReceipt) -> Result<Option<B256>> {
     for log in receipt.logs() {
         if log.topics().first().copied() == Some(crate::abi::interop_bundle_sent_topic()) {
@@ -174,6 +181,7 @@ fn extract_bundle_hash(receipt: &alloy_rpc_types::TransactionReceipt) -> Result<
     Ok(None)
 }
 
+/// Render a bundle status enum into a readable string.
 fn bundle_status_string(value: u8) -> &'static str {
     match value {
         0 => "Unreceived",
