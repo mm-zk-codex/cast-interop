@@ -2,6 +2,17 @@
 name = "cast-interop"
 version = "0.1.0"
 edition = "2021"
+description = "Cli tool for zksync interop"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/mm-zk-codex/cast-interop"
+readme = "README.md"
+keywords = ["crypto", "zk", "ethereum"]
+categories = ["cryptography"]
+
+
+[[bin]]
+name = "cast-interop"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0"
