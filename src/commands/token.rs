@@ -3,7 +3,7 @@ use crate::abi::{
     encode_interop_bundle, encode_send_bundle_call, encode_verify_bundle_call,
     interop_bundle_sent_topic,
 };
-use crate::cli::{TokenSendArgs, TokenStatusArgs, TokenWrapInfoArgs};
+use crate::cli::{TokenBalanceArgs, TokenInfoArgs, TokenSendArgs};
 use crate::config::{Config, ResolvedRpc};
 use crate::encode::{
     encode_asset_id, encode_evm_v1_address_only, encode_evm_v1_chain_only, encode_indirect_call,
@@ -42,7 +42,7 @@ const NEW_ENCODING_VERSION: u8 = 0x01;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct TokenWrapInfoOutput {
+struct TokenInfoOutput {
     src_chain_id: String,
     dest_chain_id: String,
     token_on_src: String,
@@ -56,7 +56,7 @@ struct TokenWrapInfoOutput {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct TokenStatusOutput {
+struct TokenBalanceOutput {
     src_chain_id: String,
     dest_chain_id: String,
     token_on_src: String,
@@ -68,11 +68,11 @@ struct TokenStatusOutput {
     decimals: Option<u8>,
 }
 
-pub async fn run_wrap_info(
-    args: TokenWrapInfoArgs,
-    config: Config,
-    _addresses: AddressBook,
-) -> Result<()> {
+/// Resolve wrapped token metadata on the destination chain.
+///
+/// Returns the asset ID plus optional symbol/name/decimals if the wrapped
+/// token has been deployed.
+pub async fn run_info(args: TokenInfoArgs, config: Config, _addresses: AddressBook) -> Result<()> {
     let src_rpc = config.resolve_rpc(args.rpc_src.as_deref(), args.chain_src.as_deref())?;
     let dest_rpc = config.resolve_rpc(args.rpc_dest.as_deref(), args.chain_dest.as_deref())?;
     let src_client = RpcClient::new(&src_rpc.url).await?;
@@ -103,7 +103,7 @@ pub async fn run_wrap_info(
         (None, None, None)
     };
 
-    let output = TokenWrapInfoOutput {
+    let output = TokenInfoOutput {
         src_chain_id: src_chain_id.to_string(),
         dest_chain_id: dest_chain_id.to_string(),
         token_on_src: address_to_hex(token),
@@ -139,8 +139,12 @@ pub async fn run_wrap_info(
     Ok(())
 }
 
-pub async fn run_status(
-    args: TokenStatusArgs,
+/// Fetch the wrapped token balance for a destination recipient.
+///
+/// This command also reports the wrapped token address and decimals when
+/// available.
+pub async fn run_balance(
+    args: TokenBalanceArgs,
     config: Config,
     _addresses: AddressBook,
 ) -> Result<()> {
@@ -178,7 +182,7 @@ pub async fn run_status(
         (Some(formatted), balance_raw, decimals)
     };
 
-    let output = TokenStatusOutput {
+    let output = TokenBalanceOutput {
         src_chain_id: src_chain_id.to_string(),
         dest_chain_id: dest_chain_id.to_string(),
         token_on_src: address_to_hex(token),
@@ -219,6 +223,10 @@ pub async fn run_status(
     Ok(())
 }
 
+/// Send an ERC20 across chains via the interop asset router.
+///
+/// The flow registers the token, approves allowance, sends the bundle, and can
+/// optionally watch for proof/root propagation.
 pub async fn run_send(args: TokenSendArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let src_rpc = config.resolve_rpc(args.rpc_src.as_deref(), args.chain_src.as_deref())?;
     let dest_rpc = config.resolve_rpc(args.rpc_dest.as_deref(), args.chain_dest.as_deref())?;
@@ -404,7 +412,7 @@ pub async fn run_send(args: TokenSendArgs, config: Config, addresses: AddressBoo
     let bundle_hash = bundle_hash.ok_or_else(|| anyhow!("missing InteropBundleSent event"))?;
     println!("bundleHash: {bundle_hash:#x}");
     println!(
-        "bundle status command: cast-interop status {} --bundle-hash {bundle_hash:#x}",
+        "bundle status command: cast-interop bundle status {} --bundle-hash {bundle_hash:#x}",
         format_rpc_flag(&dest_rpc)
     );
 
@@ -525,6 +533,9 @@ pub async fn run_send(args: TokenSendArgs, config: Config, addresses: AddressBoo
     Ok(())
 }
 
+/// Build the calldata for the second bridge hop in a token transfer.
+///
+/// This is the encoded asset transfer payload used by the asset router.
 fn build_second_bridge_calldata(
     asset_id: &Bytes,
     amount: U256,
@@ -540,6 +551,9 @@ fn build_second_bridge_calldata(
     Ok(Bytes::from(out))
 }
 
+/// Resolve the approval amount based on user flags.
+///
+/// Accepts \"infinite\" or defaults to the send amount.
 fn resolve_approve_amount(args: &TokenSendArgs, amount_wei: U256) -> Result<U256> {
     let approve_amount = match args.approve_amount.as_deref() {
         Some("infinite") => U256::MAX,
@@ -549,6 +563,9 @@ fn resolve_approve_amount(args: &TokenSendArgs, amount_wei: U256) -> Result<U256
     Ok(approve_amount)
 }
 
+/// Resolve the amount in wei using raw amount or decimal parsing.
+///
+/// Requires decimals when using human-readable amounts.
 async fn resolve_amount_wei(args: &TokenSendArgs, decimals: Option<u32>) -> Result<U256> {
     if let Some(amount_wei) = args.amount_wei.as_deref() {
         return parse_u256(amount_wei);
@@ -563,6 +580,9 @@ async fn resolve_amount_wei(args: &TokenSendArgs, decimals: Option<u32>) -> Resu
     parse_decimal_amount(amount, decimals)
 }
 
+/// Parse a human-readable decimal token amount into wei.
+///
+/// Enforces that fractional digits do not exceed the token decimals.
 fn parse_decimal_amount(amount: &str, decimals: u32) -> Result<U256> {
     let trimmed = amount.trim();
     let mut parts = trimmed.split('.');
@@ -594,6 +614,7 @@ fn parse_decimal_amount(amount: &str, decimals: u32) -> Result<U256> {
     Ok(value)
 }
 
+/// Compute 10^exp with overflow protection.
 fn pow10(exp: u32) -> Result<U256> {
     let mut value = U256::from(1u64);
     for _ in 0..exp {
@@ -604,6 +625,7 @@ fn pow10(exp: u32) -> Result<U256> {
     Ok(value)
 }
 
+/// Fetch the wrapped token address from the native token vault.
 async fn fetch_wrapped_token(
     client: &RpcClient,
     vault: Address,
@@ -619,6 +641,7 @@ async fn fetch_wrapped_token(
     Ok(value.0)
 }
 
+/// Fetch an ERC20 balance using balanceOf.
 async fn fetch_balance(client: &RpcClient, token: Address, owner: Address) -> Result<U256> {
     let call = balanceOfCall { account: owner };
     let data = Bytes::from(call.abi_encode());
@@ -627,6 +650,7 @@ async fn fetch_balance(client: &RpcClient, token: Address, owner: Address) -> Re
     Ok(value.0)
 }
 
+/// Fetch an ERC20 decimals value, returning None if unavailable.
 async fn fetch_decimals(client: &RpcClient, token: Address) -> Option<u32> {
     let call = decimalsCall {};
     let data = Bytes::from(call.abi_encode());
@@ -635,6 +659,7 @@ async fn fetch_decimals(client: &RpcClient, token: Address) -> Option<u32> {
     u8::try_from(value.0).ok().map(u32::from)
 }
 
+/// Fetch an ERC20 symbol, returning None if unavailable.
 async fn fetch_symbol(client: &RpcClient, token: Address) -> Option<String> {
     let call = symbolCall {};
     let data = Bytes::from(call.abi_encode());
@@ -643,6 +668,7 @@ async fn fetch_symbol(client: &RpcClient, token: Address) -> Option<String> {
     Some(value.0)
 }
 
+/// Fetch an ERC20 name, returning None if unavailable.
 async fn fetch_name(client: &RpcClient, token: Address) -> Option<String> {
     let call = nameCall {};
     let data = Bytes::from(call.abi_encode());
@@ -651,6 +677,7 @@ async fn fetch_name(client: &RpcClient, token: Address) -> Option<String> {
     Some(value.0)
 }
 
+/// Format a token value with the given decimals.
 fn format_units(value: U256, decimals: u32) -> String {
     if decimals == 0 {
         return value.to_string();
@@ -671,6 +698,7 @@ fn format_units(value: U256, decimals: u32) -> String {
     out
 }
 
+/// Send a signed transaction and wait for a receipt.
 async fn send_tx(
     client: &RpcClient,
     rpc: &ResolvedRpc,
@@ -699,6 +727,7 @@ async fn send_tx(
     Ok(format!("{tx_hash:#x}"))
 }
 
+/// Wait for the interop root to appear on the destination chain.
 async fn wait_for_root(
     client: &RpcClient,
     root_storage: Address,
@@ -728,14 +757,16 @@ async fn wait_for_root(
     }
 }
 
+/// Print a debug hint pointing to the decoded transaction view.
 fn print_tx_debug(label: &str, rpc: &ResolvedRpc, tx_hash: &str) {
     println!("[{label}] tx: {tx_hash} ({})", format_rpc(rpc));
     println!(
-        "debug: cast-interop tx show {} {tx_hash}",
+        "debug: cast-interop debug tx {} {tx_hash}",
         format_rpc_flag(rpc)
     );
 }
 
+/// Print a suggested debug flow after sending a token bundle.
 fn print_next_steps(
     src_rpc: &ResolvedRpc,
     dest_rpc: &ResolvedRpc,
@@ -744,29 +775,31 @@ fn print_next_steps(
 ) {
     println!("Next debug steps:");
     println!(
-        "  cast-interop tx show {} {tx_hash}",
+        "  cast-interop debug tx {} {tx_hash}",
         format_rpc_flag(src_rpc)
     );
     println!(
-        "  cast-interop proof {} --tx {tx_hash}",
+        "  cast-interop debug proof {} --tx {tx_hash}",
         format_rpc_flag(src_rpc)
     );
     println!(
-        "  cast-interop root wait {} --source-chain {} --batch <batch> --expected-root <root>",
+        "  cast-interop debug root {} --source-chain {} --batch <batch> --expected-root <root>",
         format_rpc_flag(dest_rpc),
         src_chain_id
     );
     println!(
-        "  cast-interop relay {} {} --tx {tx_hash} --mode execute",
+        "  cast-interop bundle relay {} {} --tx {tx_hash} --mode execute",
         format_src_flag(src_rpc),
         format_dest_flag(dest_rpc)
     );
 }
 
+/// Format a human-friendly RPC label for logs.
 fn format_rpc(rpc: &ResolvedRpc) -> String {
     rpc.alias.clone().unwrap_or_else(|| rpc.url.clone())
 }
 
+/// Format the CLI flag used to select a single RPC.
 fn format_rpc_flag(rpc: &ResolvedRpc) -> String {
     if let Some(alias) = rpc.alias.as_deref() {
         format!("--chain {alias}")
@@ -775,6 +808,7 @@ fn format_rpc_flag(rpc: &ResolvedRpc) -> String {
     }
 }
 
+/// Format the CLI flag used to select the source RPC.
 fn format_src_flag(rpc: &ResolvedRpc) -> String {
     if let Some(alias) = rpc.alias.as_deref() {
         format!("--chain-src {alias}")
@@ -783,6 +817,7 @@ fn format_src_flag(rpc: &ResolvedRpc) -> String {
     }
 }
 
+/// Format the CLI flag used to select the destination RPC.
 fn format_dest_flag(rpc: &ResolvedRpc) -> String {
     if let Some(alias) = rpc.alias.as_deref() {
         format!("--chain-dest {alias}")
@@ -791,6 +826,7 @@ fn format_dest_flag(rpc: &ResolvedRpc) -> String {
     }
 }
 
+/// Fetch the bundle status value from the handler contract.
 async fn fetch_bundle_status(
     client: &RpcClient,
     handler: Address,
@@ -801,6 +837,7 @@ async fn fetch_bundle_status(
     crate::abi::decode_bundle_status(data)
 }
 
+/// Render a bundle status enum into a readable string.
 fn status_string(value: u8) -> &'static str {
     match value {
         0 => "Unreceived",

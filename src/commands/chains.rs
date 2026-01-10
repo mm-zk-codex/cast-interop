@@ -15,6 +15,7 @@ struct ChainListItem {
     chain_id: Option<String>,
 }
 
+/// List configured chain aliases and their RPC URLs.
 pub async fn run_list(args: ChainsListArgs, config: Config, _addresses: AddressBook) -> Result<()> {
     let mut items = Vec::new();
 
@@ -51,6 +52,7 @@ pub async fn run_list(args: ChainsListArgs, config: Config, _addresses: AddressB
     Ok(())
 }
 
+/// Add a chain alias by probing the chain ID from the RPC URL.
 pub async fn run_add(
     args: ChainsAddArgs,
     mut config: Config,
@@ -75,6 +77,7 @@ pub async fn run_add(
     Ok(())
 }
 
+/// Remove a chain alias from the configuration file.
 pub async fn run_remove(
     args: ChainsRemoveArgs,
     mut config: Config,
@@ -88,6 +91,7 @@ pub async fn run_remove(
     Ok(())
 }
 
+/// Build a map of legacy chain entries from deprecated config fields.
 fn legacy_chains(config: &Config) -> BTreeMap<String, ChainConfig> {
     let mut map = BTreeMap::new();
     if let Some(rpc) = &config.rpc {
@@ -122,12 +126,14 @@ fn legacy_chains(config: &Config) -> BTreeMap<String, ChainConfig> {
     map
 }
 
+/// Probe the chain ID from an RPC URL for display purposes.
 async fn probe_chain_id(cfg: &ChainConfig) -> Result<u64> {
     let client = RpcClient::new(&cfg.rpc).await?;
     let chain = client.provider.get_chain_id().await?;
     Ok(chain)
 }
 
+/// Redact credentials from a URL string for display.
 fn redact_url(value: &str) -> String {
     match url::Url::parse(value) {
         Ok(mut parsed) => {

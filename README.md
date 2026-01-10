@@ -16,13 +16,13 @@ Viewing interop bundles/messages created by a given transaction:
 
 ```shell
 
-cast-interop tx show --rpc $RPC $TX_HASH
+cast-interop debug tx --rpc $RPC $TX_HASH
 ```
 
 Relaying all the bundles from transaction from chain A to chain B:
 
 ```shell
-cast-interop relay --rpc-src $RPC_A --rpc-dest $RPC_B --tx $TX_HASH --private-key $PRIVATE_KEY
+cast-interop bundle relay --rpc-src $RPC_A --rpc-dest $RPC_B --tx $TX_HASH --private-key $PRIVATE_KEY
 ```
 
 Sending bundle with a single remote-call message:
@@ -119,7 +119,7 @@ Signer flags (required for sending transactions unless using `--dry-run`):
 ### Relay a bundle end-to-end (verify + execute)
 
 ```bash
-cast-interop relay \
+cast-interop bundle relay \
   --chain-src era \
   --chain-dest test \
   --tx 0xSOURCE_TX_HASH \
@@ -135,7 +135,7 @@ sent tx: 0x6b6c...e219
 Relay summary output (trimmed, with `--json`):
 
 ```bash
-cast-interop relay \
+cast-interop bundle relay \
   --chain-src era \
   --chain-dest test \
   --tx 0xSOURCE_TX_HASH \
@@ -158,7 +158,7 @@ cast-interop relay \
 ### Only verify
 
 ```bash
-cast-interop relay \
+cast-interop bundle relay \
   --chain-src era \
   --chain-dest test \
   --tx 0xSOURCE_TX_HASH \
@@ -169,7 +169,7 @@ cast-interop relay \
 ### Dry-run / simulate execute
 
 ```bash
-cast-interop relay \
+cast-interop bundle relay \
   --chain-src era \
   --chain-dest test \
   --tx 0xSOURCE_TX_HASH \
@@ -188,13 +188,13 @@ cast-interop bundle extract --chain era --tx 0xSOURCE_TX_HASH --out bundle.hex
 2) Get proof:
 
 ```bash
-cast-interop proof --chain era --tx 0xSOURCE_TX_HASH --msg-index 0 --out proof.json
+cast-interop debug proof --chain era --tx 0xSOURCE_TX_HASH --msg-index 0 --out proof.json
 ```
 
 3) Wait for root on destination:
 
 ```bash
-cast-interop root wait \
+cast-interop debug root \
   --chain test \
   --source-chain 324 \
   --batch 12345 \
@@ -284,12 +284,12 @@ cast-interop token send \
 Check wrap info and destination balance:
 
 ```bash
-cast-interop token wrap-info \
+cast-interop token info \
   --chain-src era \
   --chain-dest test \
   --token 0xTokenOnSource
 
-cast-interop token status \
+cast-interop token balance \
   --chain-src era \
   --chain-dest test \
   --token 0xTokenOnSource \
@@ -299,18 +299,18 @@ cast-interop token status \
 Debug checklist for stuck transfers:
 
 ```bash
-cast-interop tx show --chain era 0xSOURCE_TX_HASH
-cast-interop proof --chain era --tx 0xSOURCE_TX_HASH
-cast-interop root wait --chain test --source-chain 324 --batch <batch> --expected-root <root>
-cast-interop relay --chain-src era --chain-dest test --tx 0xSOURCE_TX_HASH --mode execute
-cast-interop explain --chain test --bundle <bundle.hex> --proof <proof.json>
-cast-interop doctor --chain test
+cast-interop debug tx --chain era 0xSOURCE_TX_HASH
+cast-interop debug proof --chain era --tx 0xSOURCE_TX_HASH
+cast-interop debug root --chain test --source-chain 324 --batch <batch> --expected-root <root>
+cast-interop bundle status --chain test --bundle-hash <bundleHash>
+cast-interop bundle explain --chain test --bundle <bundle.hex> --proof <proof.json>
+cast-interop debug doctor --chain test
 ```
 
 ### Watch progress
 
 ```bash
-cast-interop watch \
+cast-interop debug watch \
   --chain-src era \
   --chain-dest test \
   --tx 0xSOURCE_TX_HASH \
@@ -344,17 +344,17 @@ cast-interop watch \
 
 **RPC missing finalized or getLogProof**
 
-* Use `cast-interop rpc ping --chain <alias>` to confirm capabilities.
+* Use `cast-interop debug rpc --chain <alias>` to confirm capabilities.
 * Switch to a zkSync-native RPC if the method is unsupported.
 
 ## Output formats
 
 Most commands support `--json` for structured output.
 
-Example (`status`):
+Example (`bundle status`):
 
 ```bash
-cast-interop status --chain test --bundle-hash 0xBUNDLE --json
+cast-interop bundle status --chain test --bundle-hash 0xBUNDLE --json
 ```
 
 ```json
@@ -383,10 +383,10 @@ cast-interop chains list --json
 ]
 ```
 
-Example (`tx show`, trimmed):
+Example (`debug tx`, trimmed):
 
 ```bash
-cast-interop tx show --chain era 0xSOURCE_TX_HASH
+cast-interop debug tx --chain era 0xSOURCE_TX_HASH
 ```
 
 ```

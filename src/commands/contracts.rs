@@ -18,6 +18,9 @@ struct ContractRow {
     abi_found: bool,
 }
 
+/// Inspect interop contract addresses and deployment status.
+///
+/// Reports deployed bytecode length and ABI availability.
 pub async fn run(args: ContractsArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
     let client = RpcClient::new(&resolved.url).await?;
@@ -83,6 +86,7 @@ pub async fn run(args: ContractsArgs, config: Config, addresses: AddressBook) ->
     Ok(())
 }
 
+/// Build a contract status row including code length and ABI presence.
 async fn build_row(
     name: &str,
     address: Address,

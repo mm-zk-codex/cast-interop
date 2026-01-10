@@ -14,6 +14,7 @@ pub const EVM_V1_HEADER: [u8; 4] = [0x00, 0x01, 0x00, 0x00];
 pub const EVM_V1_ADDRESS_ONLY_HEADER: [u8; 5] = [0x00, 0x01, 0x00, 0x00, 0x00];
 pub const DEFAULT_NATIVE_TOKEN_VAULT: &str = "0x0000000000000000000000000000000000010004";
 
+/// Encode a chain+address pair using the ERC-7930 v1 format.
 pub fn encode_evm_v1_with_address(chain_id: U256, address: Address) -> Bytes {
     let chain_ref = to_chain_reference(chain_id);
     let mut out = Vec::with_capacity(4 + 1 + chain_ref.len() + 1 + 20);
@@ -25,6 +26,7 @@ pub fn encode_evm_v1_with_address(chain_id: U256, address: Address) -> Bytes {
     Bytes::from(out)
 }
 
+/// Encode a chain-only ERC-7930 v1 reference (no address).
 pub fn encode_evm_v1_chain_only(chain_id: U256) -> Bytes {
     let chain_ref = to_chain_reference(chain_id);
     let mut out = Vec::with_capacity(4 + 1 + chain_ref.len() + 1);
@@ -35,6 +37,7 @@ pub fn encode_evm_v1_chain_only(chain_id: U256) -> Bytes {
     Bytes::from(out)
 }
 
+/// Encode an address-only ERC-7930 v1 reference (no chain ID).
 pub fn encode_evm_v1_address_only(address: Address) -> Bytes {
     let mut out = Vec::with_capacity(5 + 20);
     out.extend_from_slice(&EVM_V1_ADDRESS_ONLY_HEADER);
@@ -43,6 +46,7 @@ pub fn encode_evm_v1_address_only(address: Address) -> Bytes {
     Bytes::from(out)
 }
 
+/// Encode the interop call value attribute.
 pub fn encode_interop_call_value(value: U256) -> Bytes {
     let call = interopCallValueCall {
         _interopCallValue: value,
@@ -50,6 +54,7 @@ pub fn encode_interop_call_value(value: U256) -> Bytes {
     Bytes::from(call.abi_encode())
 }
 
+/// Encode the indirect call value attribute.
 pub fn encode_indirect_call(value: U256) -> Bytes {
     let call = indirectCallCall {
         _indirectCallMessageValue: value,
@@ -57,6 +62,7 @@ pub fn encode_indirect_call(value: U256) -> Bytes {
     Bytes::from(call.abi_encode())
 }
 
+/// Encode the execution address attribute.
 pub fn encode_execution_address(value: Bytes) -> Bytes {
     let call = executionAddressCall {
         _executionAddress: value,
@@ -64,6 +70,7 @@ pub fn encode_execution_address(value: Bytes) -> Bytes {
     Bytes::from(call.abi_encode())
 }
 
+/// Encode the unbundler address attribute.
 pub fn encode_unbundler_address(value: Bytes) -> Bytes {
     let call = unbundlerAddressCall {
         _unbundlerAddress: value,
@@ -71,6 +78,9 @@ pub fn encode_unbundler_address(value: Bytes) -> Bytes {
     Bytes::from(call.abi_encode())
 }
 
+/// Parse payload input from --payload or --payload-file.
+///
+/// Ensures only one input source is set.
 pub fn parse_payload(
     payload: Option<&str>,
     payload_file: Option<&std::path::Path>,
@@ -86,6 +96,9 @@ pub fn parse_payload(
     }
 }
 
+/// Parse an address or the \"permissionless\" sentinel.
+///
+/// Returns None when permissionless is requested.
 pub fn parse_permissionless_address(value: &str) -> Result<Option<Address>> {
     if value == "permissionless" {
         return Ok(None);
@@ -93,11 +106,17 @@ pub fn parse_permissionless_address(value: &str) -> Result<Option<Address>> {
     parse_address(value).map(Some)
 }
 
+/// Compute the assetId hash for a token and vault on a chain.
+///
+/// This is keccak(chainId, nativeTokenVault, token).
 pub fn encode_asset_id(chain_id: U256, token: Address, native_token_vault: Address) -> Bytes {
     let encoded = (chain_id, native_token_vault, token).abi_encode();
     Bytes::from(keccak256(encoded).to_vec())
 }
 
+/// Decode an ERC-7930 v1 chain/address reference.
+///
+/// Returns the chain ID and optional address.
 pub fn decode_evm_v1_address(data: &Bytes) -> Result<(U256, Option<Address>)> {
     let bytes = data.as_ref();
     if bytes.len() < 6 {
@@ -134,6 +153,7 @@ pub fn decode_evm_v1_address(data: &Bytes) -> Result<(U256, Option<Address>)> {
     Ok((chain_id, address))
 }
 
+/// Convert a chain ID to a minimal big-endian byte representation.
 fn to_chain_reference(chain_id: U256) -> Vec<u8> {
     if chain_id == U256::ZERO {
         return vec![0u8];

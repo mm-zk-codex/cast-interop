@@ -20,6 +20,9 @@ struct ExplainItem {
     details: String,
 }
 
+/// Explain why a bundle proof would succeed or fail.
+///
+/// Performs checks on sender, chain IDs, and permissions for the signer.
 pub async fn run(args: ExplainArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
     let client = RpcClient::new(&resolved.url).await?;
@@ -86,6 +89,7 @@ pub async fn run(args: ExplainArgs, config: Config, addresses: AddressBook) -> R
     Ok(())
 }
 
+/// Check whether the proof sender matches the interop center.
 fn check_sender(proof: &MessageInclusionProof, center: Address) -> ExplainItem {
     let expected = format!("{center:#x}").to_lowercase();
     let actual = proof.message.sender.to_lowercase();
@@ -104,6 +108,7 @@ fn check_sender(proof: &MessageInclusionProof, center: Address) -> ExplainItem {
     }
 }
 
+/// Ensure the proof message data has the bundle prefix.
 fn check_message_prefix(proof: &MessageInclusionProof) -> ExplainItem {
     if proof.message.data.to_lowercase().starts_with("0x01") {
         ExplainItem {
@@ -120,6 +125,7 @@ fn check_message_prefix(proof: &MessageInclusionProof) -> ExplainItem {
     }
 }
 
+/// Verify the bundle destination chain matches the current chain.
 fn check_destination_chain(bundle: &crate::types::InteropBundle, chain_id: u64) -> ExplainItem {
     if bundle.destinationChainId == U256::from(chain_id) {
         ExplainItem {
@@ -139,6 +145,7 @@ fn check_destination_chain(bundle: &crate::types::InteropBundle, chain_id: u64) 
     }
 }
 
+/// Verify the bundle source chain matches the proof chain ID.
 fn check_source_chain(
     bundle: &crate::types::InteropBundle,
     proof: &MessageInclusionProof,
@@ -162,6 +169,7 @@ fn check_source_chain(
     }
 }
 
+/// Verify execution/unbundler permissions for the signer.
 fn check_permissions<F>(
     bundle: &crate::types::InteropBundle,
     signer: Address,
@@ -208,6 +216,7 @@ where
     }
 }
 
+/// Load a hex string from inline input or a file path.
 fn load_hex_or_path(value: &str) -> Result<Vec<u8>> {
     if Path::new(value).exists() {
         let contents = fs::read_to_string(value)?;
@@ -216,12 +225,14 @@ fn load_hex_or_path(value: &str) -> Result<Vec<u8>> {
     decode_hex(value)
 }
 
+/// Decode a hex string, stripping a 0x prefix if present.
 fn decode_hex(value: &str) -> Result<Vec<u8>> {
     let trimmed = value.trim();
     let raw = trimmed.strip_prefix("0x").unwrap_or(trimmed);
     hex::decode(raw).map_err(|err| anyhow!("invalid hex {value}: {err}"))
 }
 
+/// Load a MessageInclusionProof from JSON or a file path.
 fn load_proof(value: &str) -> Result<MessageInclusionProof> {
     if Path::new(value).exists() {
         let contents = fs::read_to_string(value)?;

@@ -15,6 +15,9 @@ use anyhow::{Context, Result};
 use serde_json::json;
 use std::str::FromStr;
 
+/// Decode interop events from a transaction receipt.
+///
+/// Prints bundle information, message hashes, and event summaries.
 pub async fn run(args: TxShowArgs, config: Config, _addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
     let client = RpcClient::new(&resolved.url).await?;
@@ -180,6 +183,7 @@ pub async fn run(args: TxShowArgs, config: Config, _addresses: AddressBook) -> R
     Ok(())
 }
 
+/// Render a minimal bundle event for verified/executed/unbundled logs.
 fn simple_bundle_event(name: &str, log: &alloy_rpc_types::Log) -> EventView {
     let bundle_hash = log
         .topics()

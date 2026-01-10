@@ -11,6 +11,9 @@ use std::fs;
 use std::str::FromStr;
 use std::time::Duration;
 
+/// Fetch the L2→L1 log proof for an interop transaction.
+///
+/// Waits for finalization (unless disabled) and writes the proof as JSON.
 pub async fn run(args: ProofArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
     let client = RpcClient::new(&resolved.url).await?;

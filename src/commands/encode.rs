@@ -17,6 +17,9 @@ struct EncodeAttrsOutput {
     attributes: Vec<String>,
 }
 
+/// Encode ERC-7930 bytes from chain and address inputs.
+///
+/// Use --chain-id with optional --address, or --address-only.
 pub async fn run_7930(
     args: Encode7930Args,
     _config: Config,
@@ -43,6 +46,9 @@ pub async fn run_7930(
     Ok(())
 }
 
+/// Encode interop attribute calldata for messages or bundles.
+///
+/// Outputs the ABI-encoded attribute list as hex strings.
 pub async fn run_attrs(
     args: EncodeAttrsArgs,
     _config: Config,
@@ -86,6 +92,9 @@ pub async fn run_attrs(
     Ok(())
 }
 
+/// Compute the assetId hash for a token on a chain.
+///
+/// The assetId hashes chainId, vault, and token.
 pub async fn run_asset_id(
     args: EncodeAssetIdArgs,
     _config: Config,
