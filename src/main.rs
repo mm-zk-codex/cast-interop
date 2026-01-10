@@ -2,7 +2,9 @@ mod abi;
 mod cli;
 mod commands;
 mod config;
+mod encode;
 mod rpc;
+mod signer;
 mod types;
 
 use anyhow::Result;

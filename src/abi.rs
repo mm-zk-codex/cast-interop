@@ -37,8 +37,16 @@ alloy_sol_types::sol! {
         bytes32[] proof;
     }
 
+    struct InteropCallStarter {
+        bytes to;
+        bytes data;
+        bytes[] callAttributes;
+    }
+
     function verifyBundle(bytes _bundle, MessageInclusionProofSol _proof);
     function executeBundle(bytes _bundle, MessageInclusionProofSol _proof);
+    function sendMessage(bytes recipient, bytes payload, bytes[] attributes) external payable returns (bytes32);
+    function sendBundle(bytes _destinationChainId, InteropCallStarter[] _callStarters, bytes[] _bundleAttributes) external payable returns (bytes32);
     function bundleStatus(bytes32 bundleHash) external view returns (uint8);
     function callStatus(bytes32 bundleHash, uint256 callIndex) external view returns (uint8);
     function interopRoots(uint256 chainId, uint256 batchNumber) external view returns (bytes32);
@@ -268,6 +276,32 @@ pub fn encode_execute_bundle_call(
     let call = executeBundleCall {
         _bundle: encoded_bundle,
         _proof: proof,
+    };
+    Ok(Bytes::from(call.abi_encode()))
+}
+
+pub fn encode_send_message_call(
+    recipient: Bytes,
+    payload: Bytes,
+    attributes: Vec<Bytes>,
+) -> Result<Bytes> {
+    let call = sendMessageCall {
+        recipient,
+        payload,
+        attributes,
+    };
+    Ok(Bytes::from(call.abi_encode()))
+}
+
+pub fn encode_send_bundle_call(
+    destination_chain: Bytes,
+    call_starters: Vec<InteropCallStarter>,
+    bundle_attributes: Vec<Bytes>,
+) -> Result<Bytes> {
+    let call = sendBundleCall {
+        _destinationChainId: destination_chain,
+        _callStarters: call_starters,
+        _bundleAttributes: bundle_attributes,
     };
     Ok(Bytes::from(call.abi_encode()))
 }

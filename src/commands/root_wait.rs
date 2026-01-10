@@ -7,8 +7,9 @@ use alloy_primitives::{B256, U256};
 use anyhow::Result;
 use std::time::Duration;
 
-pub async fn run(args: RootWaitArgs, _config: Config, addresses: AddressBook) -> Result<()> {
-    let client = RpcClient::new(&args.rpc).await?;
+pub async fn run(args: RootWaitArgs, config: Config, addresses: AddressBook) -> Result<()> {
+    let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
+    let client = RpcClient::new(&resolved.url).await?;
     let chain_id = parse_u256(&args.source_chain)?;
     let expected_root = parse_b256(&args.expected_root)?;
     let timeout = Duration::from_millis(args.timeout_ms.unwrap_or(300_000));

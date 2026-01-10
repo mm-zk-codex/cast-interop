@@ -13,6 +13,7 @@ serde_json = "1.0"
 tokio = { version = "1.37", features = ["rt-multi-thread", "macros", "time"] }
 toml = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+url = "2.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "ansi"] }
 

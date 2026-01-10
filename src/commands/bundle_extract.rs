@@ -8,8 +8,9 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::str::FromStr;
 
-pub async fn run(args: BundleExtractArgs, _config: Config, _addresses: AddressBook) -> Result<()> {
-    let client = RpcClient::new(&args.rpc).await?;
+pub async fn run(args: BundleExtractArgs, config: Config, _addresses: AddressBook) -> Result<()> {
+    let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
+    let client = RpcClient::new(&resolved.url).await?;
     let tx_hash =
         B256::from_str(&args.tx).with_context(|| format!("invalid tx hash {}", args.tx))?;
     let receipt = get_transaction_receipt(&client, tx_hash).await?;
@@ -43,6 +44,10 @@ pub async fn run(args: BundleExtractArgs, _config: Config, _addresses: AddressBo
     }
     if let Some(path) = args.json_out {
         fs::write(path, serde_json::to_string_pretty(&output)?)?;
+    }
+
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&output)?);
     }
 
     Ok(())
