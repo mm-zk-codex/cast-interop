@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -60,6 +60,7 @@ pub struct SignerConfig {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ResolvedRpc {
     pub url: String,
     pub alias: Option<String>,
@@ -131,11 +132,7 @@ impl Config {
         }
 
         if let Some(alias) = chain {
-            if let Some(chain_cfg) = self
-                .chains
-                .as_ref()
-                .and_then(|chains| chains.get(alias))
-            {
+            if let Some(chain_cfg) = self.chains.as_ref().and_then(|chains| chains.get(alias)) {
                 return Ok(ResolvedRpc {
                     url: chain_cfg.rpc.clone(),
                     alias: Some(alias.to_string()),

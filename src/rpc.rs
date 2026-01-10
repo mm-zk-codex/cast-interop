@@ -155,6 +155,7 @@ pub async fn eth_call_with_value(
     Ok(result)
 }
 
+/*
 pub async fn estimate_gas(
     client: &RpcClient,
     from: Address,
@@ -174,3 +175,4 @@ pub async fn send_raw_transaction(client: &RpcClient, raw_tx: Bytes) -> Result<B
     let tx = client.provider.send_raw_transaction(&raw_tx).await?;
     Ok(tx.tx_hash().clone())
 }
+*/

@@ -174,13 +174,7 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
     }
 
     if let Some(dir) = args.out_dir {
-        write_relay_outputs(
-            dir,
-            &encoded_bundle,
-            &proof,
-            &summary,
-        )
-        .await?;
+        write_relay_outputs(dir, &encoded_bundle, &proof, &summary).await?;
     }
 
     Ok(())
@@ -197,6 +191,7 @@ async fn wait_for_root(
 ) -> Result<()> {
     let expected = B256::from_str(&expected_root)?;
     let start = tokio::time::Instant::now();
+    let mut first_run = true;
     loop {
         let data = encode_interop_roots_call(U256::from(chain_id), U256::from(batch_number));
         let result = eth_call(client, root_storage, data).await?;
@@ -210,6 +205,10 @@ async fn wait_for_root(
         }
         if start.elapsed() > timeout {
             anyhow::bail!("interop root did not become available in time");
+        }
+        if first_run {
+            println!("waiting for interop root to become available for {timeout:?}...");
+            first_run = false;
         }
         tokio::time::sleep(poll).await;
     }

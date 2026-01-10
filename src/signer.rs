@@ -1,6 +1,5 @@
 use crate::config::Config;
 use alloy_primitives::Address;
-use alloy_signer::Signer;
 use alloy_signer_local::PrivateKeySigner;
 use anyhow::{anyhow, Result};
 
@@ -9,7 +8,10 @@ pub struct SignerOptions<'a> {
     pub private_key_env: Option<&'a str>,
 }
 
-pub fn load_signer(options: SignerOptions<'_>, config: &Config) -> Result<Option<PrivateKeySigner>> {
+pub fn load_signer(
+    options: SignerOptions<'_>,
+    config: &Config,
+) -> Result<Option<PrivateKeySigner>> {
     if options.private_key.is_some() && options.private_key_env.is_some() {
         anyhow::bail!("cannot set both --private-key and --private-key-env");
     }

@@ -1,7 +1,9 @@
 use crate::abi::{decode_bundle_status, encode_bundle_status_call, encode_interop_roots_call};
 use crate::cli::WatchArgs;
 use crate::config::Config;
-use crate::rpc::{get_finalized_block_number, get_log_proof, get_transaction_receipt, eth_call, RpcClient};
+use crate::rpc::{
+    eth_call, get_finalized_block_number, get_log_proof, get_transaction_receipt, RpcClient,
+};
 use crate::types::{parse_b256, AddressBook};
 use alloy_primitives::{B256, U256};
 use alloy_provider::Provider;
@@ -35,7 +37,7 @@ pub async fn run(args: WatchArgs, config: Config, addresses: AddressBook) -> Res
     let mut finalized = false;
     let mut log_proof = None;
     let mut root_available = false;
-    let mut bundle_hash = extract_bundle_hash(&receipt)?;
+    let bundle_hash = extract_bundle_hash(&receipt)?;
     let mut bundle_status: Option<u8> = None;
 
     loop {
@@ -128,7 +130,10 @@ fn emit_event(json: bool, name: &str, details: serde_json::Value) {
             event: name.to_string(),
             details,
         };
-        println!("{}", serde_json::to_string_pretty(&event).unwrap_or_default());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&event).unwrap_or_default()
+        );
     } else {
         println!("{name}: {details}");
     }
