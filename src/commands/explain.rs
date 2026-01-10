@@ -44,7 +44,6 @@ pub async fn run(args: ExplainArgs, config: Config, addresses: AddressBook) -> R
 
     let mut checks = Vec::new();
     checks.push(check_sender(&proof, addresses.interop_center));
-    checks.push(check_message_prefix(&proof));
     checks.push(check_destination_chain(&bundle, chain_id));
     checks.push(check_source_chain(&bundle, &proof));
 
@@ -104,23 +103,6 @@ fn check_sender(proof: &MessageInclusionProof, center: Address) -> ExplainItem {
             check: "proof.sender".to_string(),
             status: "fail".to_string(),
             details: format!("proof sender {actual} does not match center {expected}"),
-        }
-    }
-}
-
-/// Ensure the proof message data has the bundle prefix.
-fn check_message_prefix(proof: &MessageInclusionProof) -> ExplainItem {
-    if proof.message.data.to_lowercase().starts_with("0x01") {
-        ExplainItem {
-            check: "proof.message.data".to_string(),
-            status: "ok".to_string(),
-            details: "message data has bundle prefix 0x01".to_string(),
-        }
-    } else {
-        ExplainItem {
-            check: "proof.message.data".to_string(),
-            status: "fail".to_string(),
-            details: "message data missing 0x01 bundle prefix".to_string(),
         }
     }
 }
