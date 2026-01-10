@@ -3,6 +3,7 @@ use crate::abi::{
     encode_interop_roots_call, encode_verify_bundle_call, interop_bundle_sent_topic,
 };
 use crate::cli::RelayArgs;
+use crate::commands::bundle_action::decode_send_transaction;
 use crate::config::Config;
 use crate::rpc::{
     eth_call, get_transaction_receipt, wait_for_finalized_block, wait_for_log_proof, RpcClient,
@@ -156,7 +157,9 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
             input: alloy_rpc_types::TransactionInput::new(calldata),
             ..Default::default()
         };
-        let pending = provider.send_transaction(request).await?;
+
+        let pending = decode_send_transaction(provider.send_transaction(request).await)?;
+
         let tx_hash = pending.tx_hash();
         handler_tx_hash = Some(format!("{tx_hash:#x}"));
         println!("sent tx: {tx_hash:#x}");

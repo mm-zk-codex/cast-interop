@@ -4,6 +4,7 @@ use crate::abi::{
     interop_bundle_sent_topic,
 };
 use crate::cli::{TokenBalanceArgs, TokenInfoArgs, TokenSendArgs};
+use crate::commands::bundle_action::decode_send_transaction;
 use crate::config::{Config, ResolvedRpc};
 use crate::encode::{
     encode_asset_id, encode_evm_v1_address_only, encode_evm_v1_chain_only, encode_indirect_call,
@@ -721,7 +722,9 @@ async fn send_tx(
         value,
         ..Default::default()
     };
-    let pending = provider.send_transaction(request).await?;
+
+    let pending = decode_send_transaction(provider.send_transaction(request).await)?;
+
     let tx_hash = pending.tx_hash().clone();
     let _receipt = pending.get_receipt().await?;
     Ok(format!("{tx_hash:#x}"))

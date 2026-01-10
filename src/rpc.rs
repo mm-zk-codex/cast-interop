@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::Duration;
 
+use crate::commands::bundle_action::decode_revert_reason;
+
 #[derive(Clone)]
 pub struct RpcClient {
     pub url: String,
@@ -151,7 +153,18 @@ pub async fn eth_call_with_value(
         value,
         ..Default::default()
     };
-    let result = client.provider.call(request).await?;
+    let result = client.provider.call(request).await;
+
+    let result = match result {
+        Ok(result) => result,
+        Err(err) => {
+            if let Some(reason) = decode_revert_reason(err.to_string()) {
+                return Err(anyhow!("dry-run reverted: {reason}"));
+            } else {
+                return Err(anyhow!("dry-run failed: {err}"));
+            }
+        }
+    };
     Ok(result)
 }
 

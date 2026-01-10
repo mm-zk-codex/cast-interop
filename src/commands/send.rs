@@ -1,5 +1,6 @@
 use crate::abi::{decode_bytes32, encode_send_bundle_call, encode_send_message_call};
 use crate::cli::{SendBundleArgs, SendMessageArgs};
+use crate::commands::bundle_action::decode_send_transaction;
 use crate::config::Config;
 use crate::encode::{
     encode_evm_v1_address_only, encode_evm_v1_chain_only, encode_evm_v1_with_address,
@@ -111,7 +112,9 @@ pub async fn run_message(
         value: Some(msg_value),
         ..Default::default()
     };
-    let pending = provider.send_transaction(request).await?;
+
+    let pending = decode_send_transaction(provider.send_transaction(request).await)?;
+
     let tx_hash = pending.tx_hash().clone();
     let receipt = pending.get_receipt().await?;
 
@@ -201,7 +204,9 @@ pub async fn run_bundle(
         value: Some(total_value),
         ..Default::default()
     };
-    let pending = provider.send_transaction(request).await?;
+
+    let pending = decode_send_transaction(provider.send_transaction(request).await)?;
+
     let tx_hash = pending.tx_hash().clone();
     let receipt = pending.get_receipt().await?;
 

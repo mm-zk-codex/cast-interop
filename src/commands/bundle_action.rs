@@ -7,6 +7,7 @@ use crate::types::{
     require_signer_or_dry_run, AddressBook, MessageInclusionProof, BUNDLE_IDENTIFIER,
 };
 use alloy_primitives::{Address, Bytes, U256};
+use alloy_provider::transport::TransportResult;
 use alloy_provider::{Provider, ProviderBuilder};
 use alloy_rpc_types::TransactionInput;
 use alloy_sol_types::SolValue;
@@ -127,7 +128,8 @@ async fn run_bundle_action(
         input: TransactionInput::new(calldata),
         ..Default::default()
     };
-    let pending = provider.send_transaction(request).await?;
+    let pending = decode_send_transaction(provider.send_transaction(request).await)?;
+
     let tx_hash = pending.tx_hash();
     println!("sent tx: {tx_hash:#x}");
     Ok(())
@@ -162,7 +164,7 @@ fn load_proof(value: &str) -> Result<MessageInclusionProof> {
 }
 
 /// Decode a revert reason from an error string, if present.
-fn decode_revert_reason(message: String) -> Option<String> {
+pub fn decode_revert_reason(message: String) -> Option<String> {
     let hex_start = message.find("0x")?;
     let hex_data = &message[hex_start..];
     let hex_end = hex_data.find('"').unwrap_or(hex_data.len());
@@ -196,4 +198,18 @@ fn decode_revert_reason(message: String) -> Option<String> {
 fn decode_error_string(data: &[u8]) -> Result<String> {
     let value: (String,) = <(String,)>::abi_decode(data)?;
     Ok(value.0)
+}
+
+pub fn decode_send_transaction<T>(pending: TransportResult<T>) -> Result<T> {
+    let pending = match pending {
+        Ok(pending) => pending,
+        Err(err) => {
+            if let Some(reason) = decode_revert_reason(err.to_string()) {
+                return Err(anyhow!("transaction submission reverted: {reason}"));
+            } else {
+                return Err(anyhow!("transaction submission failed: {err}"));
+            }
+        }
+    };
+    Ok(pending)
 }
