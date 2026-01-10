@@ -30,21 +30,10 @@ pub async fn run(args: TxShowArgs, config: Config, _addresses: AddressBook) -> R
     let mut l2l1_msg_hash: Option<String> = None;
     let mut events = Vec::new();
 
-    println!("Topics are as follows:");
-    println!(
-        "interop bundle sent topic: {:?}",
-        interop_bundle_sent_topic()
-    );
-    println!("message sent topic: {:?}", message_sent_topic());
-    println!("l1 message sent topic: {:?}", l1_message_sent_topic());
-    println!("bundle verified topic: {:?}", bundle_verified_topic());
-
     for log in receipt.logs() {
         let topic0 = log.topics().get(0).cloned();
-        println!("log topics: {:?}", log.topics());
         let Some(topic0) = topic0 else { continue };
         if topic0 == interop_bundle_sent_topic() && log.address() == INTEROP_CENTER_ADDRESS {
-            println!("Decoding InteropBundleSent event...");
             let (l2l1_hash, interop_hash, bundle) =
                 decode_interop_bundle_sent(log.data().data.clone())?;
             let bundle_json = crate::abi::bundle_view(&bundle);
@@ -78,9 +67,7 @@ pub async fn run(args: TxShowArgs, config: Config, _addresses: AddressBook) -> R
                 }),
             });
         } else if topic0 == message_sent_topic() && log.address() != INTEROP_CENTER_ADDRESS {
-            print!("Decoding MessageSent event...\n");
             let decoded = decode_message_sent(log.data().data.clone())?;
-            println!("Message decoded");
             let send_id = log
                 .topics()
                 .get(1)
@@ -130,8 +117,6 @@ pub async fn run(args: TxShowArgs, config: Config, _addresses: AddressBook) -> R
             continue;
         }
     }
-
-    println!("===== Decoding Complete =====");
 
     let output = TxShowOutput {
         tx_hash: format!("{tx_hash:#x}"),

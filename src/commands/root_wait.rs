@@ -14,24 +14,30 @@ pub async fn run(args: RootWaitArgs, config: Config, addresses: AddressBook) -> 
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
     let client = RpcClient::new(&resolved.url).await?;
     let chain_id = parse_u256(&args.source_chain)?;
-    let expected_root = parse_b256(&args.expected_root)?;
+    let expected_root = args.expected_root.as_ref().map(|x| parse_b256(x).unwrap());
     let timeout = Duration::from_millis(args.timeout_ms.unwrap_or(300_000));
     let poll = Duration::from_millis(args.poll_ms.unwrap_or(1_000));
     let start = tokio::time::Instant::now();
+    let mut first_run = true;
 
     loop {
         let data = encode_interop_roots_call(chain_id, U256::from(args.batch));
         let result = eth_call(&client, addresses.interop_root_storage, data).await?;
         let root = decode_bytes32(result)?;
         if root != B256::ZERO {
-            if root == expected_root {
+            if expected_root.is_none_or(|x| root == *x) {
                 println!("interop root available: {root:#x}");
                 return Ok(());
             }
+            let expected_root = expected_root.unwrap();
             anyhow::bail!("interop root mismatch: expected {expected_root:#x}, got {root:#x}");
         }
         if start.elapsed() > timeout {
             anyhow::bail!("interop root did not become available in time");
+        }
+        if first_run {
+            println!("waiting for interop root... up to {timeout:?}");
+            first_run = false;
         }
         tokio::time::sleep(poll).await;
     }

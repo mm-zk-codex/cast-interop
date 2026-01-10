@@ -58,7 +58,10 @@ pub async fn run(args: ProofArgs, config: Config, addresses: AddressBook) -> Res
         proof: log_proof.proof.clone(),
     };
 
-    println!("Message inclusion proof obtained:");
+    println!(
+        "Message inclusion proof obtained. Batch number is {} ",
+        log_proof.batch_number
+    );
 
     if args.json || args.out.is_some() {
         let json = serde_json::to_string_pretty(&output)?;

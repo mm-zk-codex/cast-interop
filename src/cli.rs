@@ -577,7 +577,7 @@ pub struct RootWaitArgs {
         value_name = "ROOT",
         help = "Expected interop root value (0x...)."
     )]
-    pub expected_root: String,
+    pub expected_root: Option<String>,
 
     #[arg(
         long,

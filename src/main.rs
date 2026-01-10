@@ -26,10 +26,6 @@ fn init_logging() {
 #[tokio::main]
 async fn main() -> Result<()> {
     init_logging();
-
-    tracing::info!("logger initialized");
-    tracing::debug!("debug logging enabled");
-
     let cli = cli::Cli::parse();
     let config = config::Config::load(cli.config_path.as_deref())?;
     cli.run(config).await
