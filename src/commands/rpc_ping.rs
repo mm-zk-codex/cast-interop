@@ -49,7 +49,10 @@ pub async fn run(args: RpcPingArgs, config: Config, _addresses: AddressBook) -> 
 
     println!(
         "chainId: {}",
-        output.chain_id.clone().unwrap_or_else(|| "unknown".to_string())
+        output
+            .chain_id
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string())
     );
     println!(
         "latest block: {}",

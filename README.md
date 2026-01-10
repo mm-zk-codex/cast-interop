@@ -2,6 +2,37 @@
 
 `cast-interop` is a cast-like CLI focused on zkSync interop workflows. It helps you extract bundles, fetch proofs, wait for roots, and execute/verify bundles across chains without wiring up the RPC or ABI plumbing every time.
 
+
+## Quick start
+
+Sending token from chain A to chain B:
+
+```shell
+cast-interop token send --token $TOKEN_ADDRESS --to $ADDRESS --rpc-src $RPC_A   --rpc-dest $RPC_B --private-key $PRIVATE_KEY --amount-wei $AMOUNT
+```
+(see examples/02_token/README.md for more details)
+
+Viewing interop bundles/messages created by a given transaction:
+
+```shell
+
+cast-interop tx show --rpc $RPC $TX_HASH
+```
+
+Relaying all the bundles from transaction from chain A to chain B:
+
+```shell
+cast-interop relay --rpc-src $RPC_A --rpc-dest $RPC_B --tx $TX_HASH --private-key $PRIVATE_KEY
+```
+
+Sending bundle with a single remote-call message:
+
+```shell
+cast-interop send message --to-chain $DESTINATION_CHAIN_ID  --to $CONTRACT_ADDR  --rpc $RPC_A  --payload-file /tmp/message  --private-key $PRIVATE_KEY
+```
+(see examples/01_greeting/README.md for more details)
+
+
 ## Installation
 
 ```bash
@@ -222,6 +253,58 @@ cast-interop send bundle \
   --bundle-execution-address permissionless \
   --bundle-unbundler 0xYourAddress \
   --private-key $PRIVATE_KEY
+```
+
+### Token bridging (minimal)
+
+Send an ERC20 via interop (Type B flow):
+
+```bash
+cast-interop token send \
+  --chain-src era \
+  --chain-dest test \
+  --token 0xTokenOnSource \
+  --amount 100 \
+  --to 0xRecipientOnDest \
+  --private-key $PRIVATE_KEY
+```
+
+Dry-run (simulate only):
+
+```bash
+cast-interop token send \
+  --chain-src era \
+  --chain-dest test \
+  --token 0xTokenOnSource \
+  --amount-wei 1000000000000000000 \
+  --to 0xRecipientOnDest \
+  --dry-run
+```
+
+Check wrap info and destination balance:
+
+```bash
+cast-interop token wrap-info \
+  --chain-src era \
+  --chain-dest test \
+  --token 0xTokenOnSource
+
+cast-interop token status \
+  --chain-src era \
+  --chain-dest test \
+  --token 0xTokenOnSource \
+  --to 0xRecipientOnDest
+```
+
+Debug checklist for stuck transfers:
+
+```bash
+cast-interop tx show --chain era 0xSOURCE_TX_HASH
+cast-interop proof --chain era --tx 0xSOURCE_TX_HASH
+cast-interop root wait --chain test --source-chain 324 --batch <batch> --expected-root <root>
+cast-interop relay --chain-src era --chain-dest test --tx 0xSOURCE_TX_HASH --mode execute
+cast-interop explain --chain test --bundle <bundle.hex> --proof <proof.json>
+cast-interop doctor --chain test
 ```
 
 ### Watch progress

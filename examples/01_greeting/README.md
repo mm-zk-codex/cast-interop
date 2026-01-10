@@ -10,7 +10,7 @@ we'll deploy a simple contract to the destination chain, and then send a message
 # Example rich account from zksync os local networks.
 export PRIVATE_KEY=0xac1e735be8536c6534bb4f17f06f6afc73b2b5ba84ac2cfb12f7461b20c0bbe3
 
-forge create examples/Greeting.sol:Greeting -r http://localhost:3051 --private-key $PRIVATE_KEY --broadcast
+forge create examples/01_greeting/Greeting.sol:Greeting -r http://localhost:3051 --private-key $PRIVATE_KEY --broadcast
 
 
 # Deployed to: 0x163CFa0911B9C7166b2608F0E902Fcd341523552

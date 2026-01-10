@@ -48,6 +48,7 @@ impl Cli {
             Command::Rpc(cmd) => cmd.run(config, addresses).await,
             Command::Contracts(cmd) => cmd.run(config, addresses).await,
             Command::Send(cmd) => cmd.run(config, addresses).await,
+            Command::Token(cmd) => cmd.run(config, addresses).await,
             Command::Encode(cmd) => cmd.run(config, addresses).await,
             Command::Watch(cmd) => cmd.run(config, addresses).await,
             Command::Doctor(cmd) => cmd.run(config, addresses).await,
@@ -68,6 +69,7 @@ pub enum Command {
     Rpc(RpcCommand),
     Contracts(ContractsCommand),
     Send(SendCommand),
+    Token(TokenCommand),
     Encode(EncodeCommand),
     Watch(WatchCommand),
     Doctor(DoctorCommand),
@@ -193,9 +195,13 @@ pub enum ChainsSubcommand {
 impl ChainsCommand {
     pub async fn run(self, config: Config, addresses: AddressBook) -> Result<()> {
         match self.command {
-            ChainsSubcommand::List(args) => commands::chains::run_list(args, config, addresses).await,
+            ChainsSubcommand::List(args) => {
+                commands::chains::run_list(args, config, addresses).await
+            }
             ChainsSubcommand::Add(args) => commands::chains::run_add(args, config, addresses).await,
-            ChainsSubcommand::Rm(args) => commands::chains::run_remove(args, config, addresses).await,
+            ChainsSubcommand::Rm(args) => {
+                commands::chains::run_remove(args, config, addresses).await
+            }
         }
     }
 }
@@ -246,8 +252,40 @@ pub enum SendSubcommand {
 impl SendCommand {
     pub async fn run(self, config: Config, addresses: AddressBook) -> Result<()> {
         match self.command {
-            SendSubcommand::Message(args) => commands::send::run_message(args, config, addresses).await,
-            SendSubcommand::Bundle(args) => commands::send::run_bundle(args, config, addresses).await,
+            SendSubcommand::Message(args) => {
+                commands::send::run_message(args, config, addresses).await
+            }
+            SendSubcommand::Bundle(args) => {
+                commands::send::run_bundle(args, config, addresses).await
+            }
+        }
+    }
+}
+
+#[derive(Parser, Debug)]
+pub struct TokenCommand {
+    #[command(subcommand)]
+    pub command: TokenSubcommand,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum TokenSubcommand {
+    #[command(name = "wrap-info")]
+    WrapInfo(TokenWrapInfoArgs),
+    Status(TokenStatusArgs),
+    Send(TokenSendArgs),
+}
+
+impl TokenCommand {
+    pub async fn run(self, config: Config, addresses: AddressBook) -> Result<()> {
+        match self.command {
+            TokenSubcommand::WrapInfo(args) => {
+                commands::token::run_wrap_info(args, config, addresses).await
+            }
+            TokenSubcommand::Status(args) => {
+                commands::token::run_status(args, config, addresses).await
+            }
+            TokenSubcommand::Send(args) => commands::token::run_send(args, config, addresses).await,
         }
     }
 }
@@ -270,8 +308,12 @@ pub enum EncodeSubcommand {
 impl EncodeCommand {
     pub async fn run(self, config: Config, addresses: AddressBook) -> Result<()> {
         match self.command {
-            EncodeSubcommand::Erc7930(args) => commands::encode::run_7930(args, config, addresses).await,
-            EncodeSubcommand::Attrs(args) => commands::encode::run_attrs(args, config, addresses).await,
+            EncodeSubcommand::Erc7930(args) => {
+                commands::encode::run_7930(args, config, addresses).await
+            }
+            EncodeSubcommand::Attrs(args) => {
+                commands::encode::run_attrs(args, config, addresses).await
+            }
             EncodeSubcommand::AssetId(args) => {
                 commands::encode::run_asset_id(args, config, addresses).await
             }
@@ -607,6 +649,129 @@ pub struct SendBundleArgs {
 
     #[arg(long)]
     pub json: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct TokenWrapInfoArgs {
+    #[arg(long)]
+    pub rpc_src: Option<String>,
+
+    #[arg(long)]
+    pub chain_src: Option<String>,
+
+    #[arg(long)]
+    pub rpc_dest: Option<String>,
+
+    #[arg(long)]
+    pub chain_dest: Option<String>,
+
+    #[arg(long)]
+    pub token: String,
+
+    #[arg(long)]
+    pub native_token_vault: Option<String>,
+
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct TokenStatusArgs {
+    #[arg(long)]
+    pub rpc_src: Option<String>,
+
+    #[arg(long)]
+    pub chain_src: Option<String>,
+
+    #[arg(long)]
+    pub rpc_dest: Option<String>,
+
+    #[arg(long)]
+    pub chain_dest: Option<String>,
+
+    #[arg(long)]
+    pub token: String,
+
+    #[arg(long)]
+    pub to: String,
+
+    #[arg(long)]
+    pub native_token_vault: Option<String>,
+
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct TokenSendArgs {
+    #[arg(long)]
+    pub rpc_src: Option<String>,
+
+    #[arg(long)]
+    pub chain_src: Option<String>,
+
+    #[arg(long)]
+    pub rpc_dest: Option<String>,
+
+    #[arg(long)]
+    pub chain_dest: Option<String>,
+
+    #[arg(long)]
+    pub token: String,
+
+    #[arg(long)]
+    pub amount: Option<String>,
+
+    #[arg(long)]
+    pub amount_wei: Option<String>,
+
+    #[arg(long)]
+    pub decimals: Option<u32>,
+
+    #[arg(long)]
+    pub to: String,
+
+    #[arg(long, default_value = "0")]
+    pub indirect_msg_value: String,
+
+    #[arg(long)]
+    pub interop_value: Option<String>,
+
+    #[arg(long)]
+    pub unbundler: Option<String>,
+
+    #[arg(long)]
+    pub asset_router: Option<String>,
+
+    #[arg(long)]
+    pub native_token_vault: Option<String>,
+
+    #[arg(long)]
+    pub skip_register: bool,
+
+    #[arg(long)]
+    pub skip_approve: bool,
+
+    #[arg(long)]
+    pub approve_amount: Option<String>,
+
+    #[arg(long, default_value = "execute")]
+    pub mode: String,
+
+    #[arg(long)]
+    pub watch: bool,
+
+    #[arg(long)]
+    pub timeout_ms: Option<u64>,
+
+    #[arg(long)]
+    pub poll_ms: Option<u64>,
+
+    #[arg(long)]
+    pub dry_run: bool,
+
+    #[command(flatten)]
+    pub signer: SignerArgs,
 }
 
 #[derive(Args, Debug)]
