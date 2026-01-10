@@ -36,7 +36,7 @@ cast-interop send message --to-chain $DESTINATION_CHAIN_ID  --to $CONTRACT_ADDR 
 ## Installation
 
 ```bash
-cargo install --path .
+cargo install cast-interop
 ```
 
 Or build locally:
