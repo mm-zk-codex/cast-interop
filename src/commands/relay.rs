@@ -8,7 +8,9 @@ use crate::config::Config;
 use crate::relay_flow::{build_message_proof, wait_for_proof, wait_for_root};
 use crate::rpc::{eth_call, get_transaction_receipt, RpcClient};
 use crate::signer::{load_signer, SignerOptions};
-use crate::types::{format_hex, require_signer_or_dry_run, AddressBook, RelaySummary};
+use crate::types::{
+    format_hex, require_signer_or_dry_run, AddressBook, MessageInclusionProof, RelaySummary,
+};
 use alloy_primitives::{Address, Bytes, B256};
 use alloy_provider::{Provider, ProviderBuilder};
 use anyhow::{anyhow, Context, Result};

@@ -1,13 +1,10 @@
-use crate::abi::{
-    decode_interop_bundle_sent, decode_message_sent, interop_bundle_sent_topic, message_sent_topic,
-};
+use crate::abi::{decode_interop_bundle_sent, interop_bundle_sent_topic};
 use crate::cli::AutoRelayArgs;
 use crate::config::Config;
-use crate::encode::decode_evm_v1_address;
 use crate::relay_flow::{build_message_proof, execute_bundle, wait_for_proof, wait_for_root};
 use crate::rpc::{get_transaction_receipt, RpcClient};
-use crate::types::{AddressBook, InteropBundle, MessageInclusionProof};
-use alloy_primitives::{Address, Bytes, B256, U256, U64};
+use crate::types::{AddressBook, MessageInclusionProof};
+use alloy_primitives::{Address, Bytes, B256, U256};
 use alloy_provider::Provider;
 use alloy_rpc_types::{BlockNumberOrTag, BlockTransactions};
 use anyhow::{anyhow, Context, Result};
@@ -16,7 +13,7 @@ use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::sync::{mpsc, Semaphore, watch};
+use tokio::sync::{mpsc, watch, Semaphore};
 use tokio::task::JoinSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +28,7 @@ enum JobStage {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct Job {
     id: String,
     src_index: usize,
@@ -197,7 +195,7 @@ async fn chain_poll_loop(
     lookback_blocks: u64,
     poll: Duration,
     center: Address,
-    mut shutdown_rx: watch::Receiver<bool>,
+    shutdown_rx: watch::Receiver<bool>,
 ) -> Result<()> {
     let mut last_scanned: Option<u64> = None;
     loop {
@@ -258,13 +256,17 @@ async fn scan_block(
 ) -> Result<()> {
     let block = client
         .provider
-        .get_block_by_number(BlockNumberOrTag::Number(U64::from(block_number)))
+        .get_block_by_number(BlockNumberOrTag::Number(block_number))
         .await?
         .ok_or_else(|| anyhow!("missing block {block_number}"))?;
 
     let tx_hashes: Vec<B256> = match block.transactions {
         BlockTransactions::Hashes(hashes) => hashes,
-        BlockTransactions::Full(txs) => txs.into_iter().map(|tx| tx.hash).collect(),
+        BlockTransactions::Full(txs) => txs
+            .into_iter()
+            .map(|tx| tx.into_inner().hash().clone())
+            .collect(),
+        _ => Vec::new(),
     };
 
     if tx_hashes.is_empty() {
@@ -289,8 +291,8 @@ async fn scan_block(
                     insert_job(state, job)?;
                 }
             }
-            Ok(Err(err)) => {
-                eprintln!("receipt fetch failed: {err}");
+            Ok(Err(_)) => {
+                // This will be too spammy.
             }
             Err(err) => {
                 eprintln!("receipt task failed: {err}");
@@ -323,29 +325,6 @@ fn detect_job_from_receipt(
                 block_number: receipt.block_number.unwrap_or_default(),
                 tx_index: receipt.transaction_index.unwrap_or_default(),
                 bundle_hash: Some(bundle_hash),
-                encoded_bundle,
-            });
-        }
-        if topic == Some(message_sent_topic()) {
-            let decoded = decode_message_sent(log.data().data.clone()).ok()?;
-            let recipient = Bytes::from(decoded.recipient);
-            let (dest_chain_id, _) = decode_evm_v1_address(&recipient).ok()?;
-            let dest_chain_id = u256_to_u64(dest_chain_id).ok()?;
-            let payload = decoded.payload;
-            if payload.first().copied() != Some(crate::types::BUNDLE_IDENTIFIER) {
-                return None;
-            }
-            let encoded_bundle = Bytes::from(payload[1..].to_vec());
-            if InteropBundle::abi_decode(encoded_bundle.as_ref()).is_err() {
-                return None;
-            }
-            return Some(DetectedJob {
-                src_index,
-                dest_chain_id,
-                source_tx_hash: receipt.transaction_hash,
-                block_number: receipt.block_number.unwrap_or_default(),
-                tx_index: receipt.transaction_index.unwrap_or_default(),
-                bundle_hash: None,
                 encoded_bundle,
             });
         }
@@ -416,7 +395,7 @@ async fn job_processor_loop(
     signer: Option<alloy_signer_local::PrivateKeySigner>,
     semaphore: Arc<Semaphore>,
     poll_interval_ms: u64,
-    mut shutdown_rx: watch::Receiver<bool>,
+    shutdown_rx: watch::Receiver<bool>,
 ) {
     let poll = Duration::from_millis(poll_interval_ms);
     loop {
@@ -512,10 +491,15 @@ async fn process_job(
                 tx_hash, proof.batch_number, proof.id
             );
             store_log_proof(state, job_key, proof, center);
+            update_job_stage(state, job_key, JobStage::WaitingRoot);
         }
         JobStage::WaitingRoot => {
             if root_ready {
-                update_job_stage(state, job_key, JobStage::Executing);
+                if signer.is_some() {
+                    update_job_stage(state, job_key, JobStage::Executing);
+                } else {
+                    update_job_stage(state, job_key, JobStage::NeedsKey);
+                }
                 return Ok(());
             }
             let proof = proof.context("missing log proof")?;
@@ -536,35 +520,13 @@ async fn process_job(
         }
         JobStage::Executing => {
             let proof = load_proof_from_state(state, job_key)?;
-            let signer = signer.ok_or_else(|| anyhow!("missing signer"))?;
-            let tx_hash = execute_bundle(
-                &dest.client,
-                &dest.rpc_url,
-                handler,
-                signer,
-                bundle,
-                proof,
-            )
-            .await?;
+            let signer = signer.clone().ok_or_else(|| anyhow!("missing signer"))?;
+            let tx_hash =
+                execute_bundle(&dest.client, &dest.rpc_url, handler, signer, bundle, proof).await?;
             eprintln!("executed tx {tx_hash:#x}");
             mark_job_done(state, job_key, Some(tx_hash));
         }
         JobStage::NeedsKey | JobStage::Done | JobStage::Failed => {}
-    }
-
-    let stage = current_stage(state, job_key)?;
-    if stage == JobStage::WaitingProof {
-        let proof = load_proof_from_state(state, job_key)?;
-        update_job_stage(state, job_key, JobStage::WaitingRoot);
-    }
-
-    let stage = current_stage(state, job_key)?;
-    if stage == JobStage::WaitingRoot {
-        if signer.is_some() {
-            update_job_stage(state, job_key, JobStage::Executing);
-        } else {
-            update_job_stage(state, job_key, JobStage::NeedsKey);
-        }
     }
 
     Ok(())
@@ -662,12 +624,6 @@ fn load_proof_from_state(
     job.proof.clone().context("proof missing")
 }
 
-fn current_stage(state: &Arc<Mutex<AppState>>, job_key: &str) -> Result<JobStage> {
-    let state = state.lock().expect("state lock");
-    let job = state.jobs.get(job_key).context("job missing")?;
-    Ok(job.stage)
-}
-
 async fn run_ui(state: Arc<Mutex<AppState>>, shutdown_tx: watch::Sender<bool>) -> Result<()> {
     let (input_tx, mut input_rx) = mpsc::unbounded_channel::<String>();
     tokio::spawn(async move {
@@ -724,9 +680,7 @@ fn build_header(state: &AppState) -> String {
         .filter_map(|chain| chain.chain_id.map(|id| format!("{}:{}", chain.label, id)))
         .collect::<Vec<_>>()
         .join(" ");
-    format!(
-        "AUTO-RELAY (EXECUTE) | signer: {signer} | chains: {chain_labels} | {uptime}"
-    )
+    format!("AUTO-RELAY (EXECUTE) | signer: {signer} | chains: {chain_labels} | {uptime}")
 }
 
 fn build_chain_table(state: &AppState) -> String {
@@ -750,7 +704,7 @@ fn build_chain_table(state: &AppState) -> String {
 
 fn build_job_table(state: &AppState) -> String {
     let headers = ["Age", "Src→Dest", "Tx", "Stage", "Details"];
-    let widths = [6, 10, 14, 12, 50];
+    let widths = [6, 10, 14, 12, 100];
     let mut rows = Vec::new();
     for key in state.job_order.iter().rev() {
         if let Some(job) = state.jobs.get(key) {
@@ -820,7 +774,7 @@ fn stage_label(stage: JobStage) -> &'static str {
     match stage {
         JobStage::Detected => "DETECTED",
         JobStage::WaitingProof => "PROOF",
-        JobStage::WaitingRoot => "ROOT",
+        JobStage::WaitingRoot => "WAIT_ROOT",
         JobStage::NeedsKey => "NEEDS_KEY",
         JobStage::Executing => "EXEC",
         JobStage::Done => "DONE",
@@ -851,7 +805,10 @@ fn job_details(job: &Job) -> String {
             .handler_tx_hash
             .map(short_hash)
             .unwrap_or_else(|| "done".to_string()),
-        JobStage::Failed => job.last_error.clone().unwrap_or_else(|| "failed".to_string()),
+        JobStage::Failed => job
+            .last_error
+            .clone()
+            .unwrap_or_else(|| "failed".to_string()),
     }
 }
 
@@ -876,6 +833,7 @@ fn format_duration(duration: Duration) -> String {
 
 fn retry_failed_jobs(state: &Arc<Mutex<AppState>>) {
     let mut state = state.lock().expect("state lock");
+    let signer_loaded = state.signer_loaded;
     for job in state.jobs.values_mut() {
         if job.stage != JobStage::Failed {
             continue;
@@ -886,7 +844,7 @@ fn retry_failed_jobs(state: &Arc<Mutex<AppState>>) {
             job.stage = JobStage::WaitingProof;
         } else if !job.root_ready {
             job.stage = JobStage::WaitingRoot;
-        } else if state.signer_loaded {
+        } else if signer_loaded {
             job.stage = JobStage::Executing;
         } else {
             job.stage = JobStage::NeedsKey;
