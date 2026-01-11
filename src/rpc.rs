@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use crate::commands::bundle_action::decode_revert_reason;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RpcClient {
     pub url: String,
     pub provider: DynProvider,

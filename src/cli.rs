@@ -70,6 +70,7 @@ impl Cli {
             Command::Debug(cmd) => cmd.run(config, addresses).await,
             Command::Encode(cmd) => cmd.run(config, addresses).await,
             Command::Chains(cmd) => cmd.run(config, addresses).await,
+            Command::AutoRelay(args) => commands::auto_relay::run(args, config, addresses).await,
         }
     }
 }
@@ -107,6 +108,11 @@ pub enum Command {
         long_about = "Add, list, or remove chain aliases in the config file.\nUse this to avoid repeating RPC URLs.\nExample: cast-interop chains add era --rpc https://mainnet.era.zksync.io"
     )]
     Chains(ChainsCommand),
+    #[command(
+        about = "Automatically relay interop bundles across chains.",
+        long_about = "Watch multiple chains, detect interop bundle sends, fetch proofs, wait for roots, and execute on matching destination chains.\nUse this for continuous relaying across a set of RPC endpoints.\nExample: cast-interop auto-relay --rpc http://localhost:3050 --rpc http://localhost:3051 --private-key $PRIVATE_KEY"
+    )]
+    AutoRelay(AutoRelayArgs),
 }
 
 /// Debug and observability helpers.
@@ -423,6 +429,55 @@ impl ChainsCommand {
             }
         }
     }
+}
+
+/// Auto-relay bundles across multiple chains.
+#[derive(Args, Debug)]
+pub struct AutoRelayArgs {
+    #[arg(
+        long,
+        value_name = "RPC_URL",
+        num_args = 2..,
+        required = true,
+        action = clap::ArgAction::Append,
+        help = "RPC URL to watch. Repeatable, at least 2 required."
+    )]
+    pub rpc: Vec<String>,
+
+    #[arg(long, value_name = "HEX", help = "Private key hex string. Default: unset.")]
+    pub private_key: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 200,
+        help = "Number of blocks to scan on startup. Default: 200."
+    )]
+    pub lookback_blocks: u64,
+
+    #[arg(
+        long,
+        value_name = "MS",
+        default_value_t = 500,
+        help = "Poll interval in milliseconds. Default: 500."
+    )]
+    pub poll_interval_ms: u64,
+
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 8,
+        help = "Maximum concurrent in-flight RPC calls. Default: 8."
+    )]
+    pub max_inflight: u64,
+
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 200,
+        help = "Maximum jobs kept in the UI. Default: 200."
+    )]
+    pub max_jobs: u64,
 }
 
 /// Shared RPC selection flags.
