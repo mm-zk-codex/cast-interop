@@ -32,6 +32,12 @@ cast-interop send message --to-chain $DESTINATION_CHAIN_ID  --to $CONTRACT_ADDR 
 ```
 (see examples/01_greeting/README.md for more details)
 
+Automatically relay all the bundles between a set of chains:
+
+```shell
+cast-interop auto-relay --rpc $RPC_A $RPC_B $RPC_C   --private-key $PRIVATE_KEY
+```
+
 
 ## Installation
 
