@@ -1,0 +1,17 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: ['main']
+
+jobs:
+  ci-success:
+    name: pr-checks
+    runs-on: ubuntu-latest
+    if: always() && !cancelled()
+    steps:
+      - name: Status
+        run: |
+          exit 0
