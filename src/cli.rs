@@ -444,7 +444,11 @@ pub struct AutoRelayArgs {
     )]
     pub rpc: Vec<String>,
 
-    #[arg(long, value_name = "HEX", help = "Private key hex string. Default: unset.")]
+    #[arg(
+        long,
+        value_name = "HEX",
+        help = "Private key hex string. Default: unset."
+    )]
     pub private_key: Option<String>,
 
     #[arg(

@@ -1,17 +1,130 @@
 name: CI
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, edited]
   push:
-    branches: ['main']
+    branches:
+     - main
+  pull_request:
+
+
+# Cancel new runs for PRs only
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Default environment variables
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  TEST_RESULTS_XML: 'test-results.xml'
+  # Run tests 10 times in case of push to main branch to catch possible flakiness
+  NEXTEST_ITERATIONS: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && '--stress-count 10' || '' }}
+
+# Add default permissions for the workflow
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
 
 jobs:
+
+  ############################
+  #       Build server       #
+  ############################
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+
+      - name: Install Rust toolchain
+        uses: moonrepo/setup-rust@ede6de059f8046a5e236c94046823e2af11ca670 # v1.2.2
+        env:
+          # To fix rate limiting issues with GitHub API
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          inherit-toolchain: true
+          components: 'rustfmt,clippy'
+          bins: 'cargo-nextest,cargo-llvm-cov'
+          cache: false
+
+      - name: Build
+        run: cargo build --release 
+
+
+  ############################
+  #     Format and lint      #
+  ############################
+  format-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install Rust toolchain
+        uses: moonrepo/setup-rust@ede6de059f8046a5e236c94046823e2af11ca670 # v1.2.2
+        env:
+          # To fix rate limiting issues with GitHub API
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          inherit-toolchain: true
+          components: 'rustfmt,clippy'
+          bins: 'cargo-nextest,cargo-llvm-cov'
+          cache: false
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      # As most of this code was AI generated, not worth running clippy yet.
+      #- name: Run clippy
+      #  run: cargo clippy --all-targets --all-features --workspace -- -D warnings
+
+
+  #################################################
+  #      Run unit and core integration tests      #
+  #################################################
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install Rust toolchain
+        uses: moonrepo/setup-rust@ede6de059f8046a5e236c94046823e2af11ca670 # v1.2.2
+        env:
+          # To fix rate limiting issues with GitHub API
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          inherit-toolchain: true
+          components: 'rustfmt,clippy'
+          bins: 'cargo-nextest,cargo-llvm-cov'
+          cache: false
+
+      - name: Run tests
+        run: cargo nextest run --release --workspace ${NEXTEST_ITERATIONS}
+
+
+
+  ###############################
+  #  Mandatory CI status check  #
+  ###############################
   ci-success:
     name: pr-checks
     runs-on: ubuntu-latest
     if: always() && !cancelled()
+    needs:
+      [
+        build,
+        test,
+        format-and-lint,
+      ]
     steps:
       - name: Status
         run: |
-          exit 0
+          # This will check all jobs status in the `needs` list, and fail job if one is failed.
+          # Since we split prover and core to different flows, this job will be only as Required Status Check in the Pull Request.
+          if [[ ${{ contains(join(needs.*.result, ','), 'failure') }} == "true" ]]; then
+            echo "Intentionally failing to block PR from merging"
+            exit 1
+          fi

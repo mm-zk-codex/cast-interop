@@ -31,3 +31,12 @@ async fn main() -> Result<()> {
     let config = config::Config::load(cli.config_path.as_deref())?;
     cli.run(config).await
 }
+
+// Add no-op test.
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_works() {
+        // no-op
+    }
+}
