@@ -821,6 +821,12 @@ pub struct RelayArgs {
     )]
     pub poll_ms: Option<u64>,
 
+    #[arg(
+        long,
+        help = "Skip pre-flight simulation before sending the transaction. Default: false."
+    )]
+    pub skip_simulation: bool,
+
     #[arg(long, help = "Emit JSON output. Default: false.")]
     pub json: bool,
 }

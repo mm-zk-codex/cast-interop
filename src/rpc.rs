@@ -168,15 +168,8 @@ pub async fn eth_call_with_value(
     Ok(result)
 }
 
-/*
-pub async fn estimate_gas(
-    client: &RpcClient,
-    from: Address,
-    to: Address,
-    data: Bytes,
-) -> Result<u64> {
+pub async fn estimate_gas(client: &RpcClient, to: Address, data: Bytes) -> Result<u64> {
     let request = TransactionRequest {
-        from: Some(from),
         to: Some(to.into()),
         input: TransactionInput::new(data),
         ..Default::default()
@@ -184,8 +177,37 @@ pub async fn estimate_gas(
     Ok(client.provider.estimate_gas(request).await?)
 }
 
+pub struct SimulationResult {
+    pub gas_estimate: u64,
+    pub revert_reason: Option<String>,
+}
+
+impl SimulationResult {
+    pub fn success(&self) -> bool {
+        self.revert_reason.is_none()
+    }
+}
+
+pub async fn simulate_call(client: &RpcClient, to: Address, data: Bytes) -> SimulationResult {
+    match eth_call(client, to, data.clone()).await {
+        Err(err) => {
+            let msg = err.to_string();
+            // eth_call already decodes the revert; strip its prefix to get just the reason.
+            let reason = msg
+                .strip_prefix("dry-run reverted: ")
+                .or_else(|| msg.strip_prefix("dry-run failed: "))
+                .unwrap_or(&msg)
+                .to_string();
+            SimulationResult { gas_estimate: 0, revert_reason: Some(reason) }
+        }
+        Ok(_) => {
+            let gas_estimate = estimate_gas(client, to, data).await.unwrap_or(0);
+            SimulationResult { gas_estimate, revert_reason: None }
+        }
+    }
+}
+
 pub async fn send_raw_transaction(client: &RpcClient, raw_tx: Bytes) -> Result<B256> {
     let tx = client.provider.send_raw_transaction(&raw_tx).await?;
-    Ok(tx.tx_hash().clone())
+    Ok(*tx.tx_hash())
 }
-*/
