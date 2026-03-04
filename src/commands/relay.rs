@@ -205,8 +205,7 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
             } else {
                 String::new()
             };
-            write_relay_outputs(dir.clone(), suffix, &detected.encoded_bundle, &proof, &summary)
-                .await?;
+            write_relay_outputs(dir.clone(), suffix, &detected.encoded_bundle, &proof, &summary)?;
         }
     }
 
@@ -269,7 +268,7 @@ async fn relay_one(
 
     let mut handler_tx_hash = None;
     if args.dry_run {
-        match eth_call(dest_client, handler, calldata.clone()).await {
+        match eth_call(dest_client, handler, calldata).await {
             Ok(_) => println!("dry-run success"),
             Err(err) => println!("dry-run failed: {err}"),
         }
@@ -305,7 +304,7 @@ async fn relay_one(
 }
 
 /// Write relay artifacts (bundle, proof, summary) to a directory.
-async fn write_relay_outputs(
+fn write_relay_outputs(
     dir: PathBuf,
     suffix: String,
     encoded_bundle: &Bytes,
