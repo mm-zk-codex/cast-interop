@@ -1,7 +1,10 @@
 use alloy_primitives::{Address, Bytes, B256};
-use alloy_provider::{DynProvider, Provider, ProviderBuilder};
+use alloy_provider::{DynProvider, Provider, ProviderBuilder, RootProvider};
+use alloy_rpc_client::RpcClient as AlloyRpcClient;
 use alloy_rpc_types::{BlockNumberOrTag, TransactionInput, TransactionReceipt, TransactionRequest};
+use alloy_transport_http::Http;
 use anyhow::{anyhow, Context, Result};
+use reqwest::header::{HeaderValue, AUTHORIZATION};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -17,14 +20,43 @@ pub struct RpcClient {
 }
 
 impl RpcClient {
+    /// Create a plain (unauthenticated) RPC client.
     pub async fn new(url: &str) -> Result<Self> {
         let http = Client::new();
-
         let provider = ProviderBuilder::new().connect(url).await?;
-
         Ok(Self {
             url: url.to_string(),
             provider: provider.erased(),
+            http,
+        })
+    }
+
+    /// Create an RPC client that injects `Authorization: Bearer <token>` on
+    /// every request — both for alloy provider calls and raw JSON-RPC calls.
+    ///
+    /// Unlike [`Self::new`], this is synchronous because the authenticated transport
+    /// is constructed directly from a pre-built `reqwest::Client` without any network
+    /// calls (connection is established lazily on first use).
+    pub fn new_with_auth(url: &str, bearer_token: &str) -> Result<Self> {
+        let auth_value = HeaderValue::from_str(&format!("Bearer {bearer_token}"))
+            .context("invalid bearer token for Authorization header")?;
+
+        let mut default_headers = reqwest::header::HeaderMap::new();
+        default_headers.insert(AUTHORIZATION, auth_value);
+
+        let http = Client::builder()
+            .default_headers(default_headers)
+            .build()
+            .context("failed to build authenticated reqwest client")?;
+
+        let parsed_url: url::Url = url.parse().context("invalid RPC URL")?;
+        let transport = Http::with_client(http.clone(), parsed_url);
+        let rpc_client = AlloyRpcClient::new(transport, false);
+        let provider = RootProvider::new(rpc_client).erased();
+
+        Ok(Self {
+            url: url.to_string(),
+            provider,
             http,
         })
     }
@@ -166,6 +198,33 @@ pub async fn eth_call_with_value(
         }
     };
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_with_auth_builds_client_without_network() {
+        // Should succeed without any network connection — only client construction.
+        let client = RpcClient::new_with_auth("https://rpc.example.com", "test-bearer-token");
+        assert!(client.is_ok(), "should build auth client: {:?}", client.err());
+        let client = client.unwrap();
+        assert_eq!(client.url, "https://rpc.example.com");
+    }
+
+    #[test]
+    fn new_with_auth_invalid_url_returns_error() {
+        let result = RpcClient::new_with_auth("not a valid url at all", "token");
+        assert!(result.is_err(), "expected error for invalid URL");
+    }
+
+    #[test]
+    fn new_with_auth_bad_bearer_token_characters_errors() {
+        // Bearer token with newline is invalid as an HTTP header value
+        let result = RpcClient::new_with_auth("https://rpc.example.com", "bad\ntoken");
+        assert!(result.is_err(), "expected error for invalid token with newline");
+    }
 }
 
 /*

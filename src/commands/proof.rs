@@ -1,7 +1,7 @@
 use crate::cli::ProofArgs;
 use crate::config::Config;
 use crate::rpc::{
-    get_transaction_receipt, wait_for_finalized_block, wait_for_log_proof, RpcClient,
+    get_transaction_receipt, wait_for_finalized_block, wait_for_log_proof,
 };
 use crate::types::{AddressBook, MessageInclusionProof, ProofMessage};
 use alloy_primitives::B256;
@@ -16,7 +16,7 @@ use std::time::Duration;
 /// Waits for finalization (unless disabled) and writes the proof as JSON.
 pub async fn run(args: ProofArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
-    let client = RpcClient::new(&resolved.url).await?;
+    let client = resolved.to_rpc_client().await?;
     let tx_hash =
         B256::from_str(&args.tx).with_context(|| format!("invalid tx hash {}", args.tx))?;
     let receipt = get_transaction_receipt(&client, tx_hash).await?;

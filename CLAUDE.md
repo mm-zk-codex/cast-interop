@@ -1,4 +1,4 @@
-0p0# CLAUDE.md
+# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -29,8 +29,9 @@ This is a single Rust crate with no workspace. All code lives under `src/`.
 
 - **`main.rs`** — Entry point. Initializes tracing (via `RUST_LOG` env filter) and dispatches to the CLI.
 - **`cli.rs`** — clap-based CLI definition. Defines the top-level `Cli` struct and all subcommand enums (`Command`, `BundleSubcommand`, `DebugSubcommand`, etc.). Each subcommand's `run()` delegates to a handler in `commands/`.
-- **`config.rs`** — TOML config loading from `~/.config/cast-interop/config.toml`. Defines `Config`, `ChainConfig`, `AddressConfig`. Handles chain alias resolution (`--rpc` vs `--chain`).
-- **`rpc.rs`** — `RpcClient` wrapping an alloy `DynProvider` + reqwest `Client`. Provides helpers for `eth_call`, `raw_rpc` (JSON-RPC calls), log proof fetching, and finalization polling.
+- **`config.rs`** — TOML config loading from `~/.config/cast-interop/config.toml`. Defines `Config`, `ChainConfig`, `AddressConfig`. Handles chain alias resolution (`--rpc` vs `--chain`). `ResolvedRpc::to_rpc_client()` is the single point where authentication is injected — commands call this instead of `RpcClient::new` directly.
+- **`rpc.rs`** — `RpcClient` wrapping an alloy `DynProvider` + reqwest `Client`. `RpcClient::new_with_auth(url, token)` builds a client that injects `Authorization: Bearer <token>` on every request (both alloy provider and raw JSON-RPC paths). Provides helpers for `eth_call`, `raw_rpc`, log proof fetching, and finalization polling.
+- **`prividium.rs`** — SIWE authentication flow for Prividium chains. Exposes `authenticate(api_base_url, private_key) -> SessionToken`. Performs: (1) request nonce message, (2) sign with EIP-191 `personal_sign`, (3) submit signature to get bearer token.
 - **`signer.rs`** — Loads a `PrivateKeySigner` from `--private-key` flag, `--private-key-env` env var, or config.
 - **`types.rs`** — Shared types (`AddressBook`, view structs for JSON output, Solidity struct definitions via `alloy_sol_types::sol!` for `InteropBundle`, `InteropCall`, `BundleAttributes`). Also defines default system contract addresses.
 - **`abi.rs`** — ABI encoding/decoding helpers. Encodes contract calls (`verifyBundle`, `executeBundle`, `sendMessage`, `sendBundle`, `bundleStatus`, `interopRoots`) and decodes event data (`InteropBundleSent`, `MessageSent`). Contains the interop error selector map for revert decoding.
@@ -42,6 +43,7 @@ This is a single Rust crate with no workspace. All code lives under `src/`.
 
 - **alloy ecosystem**: Uses `alloy-primitives`, `alloy-sol-types`, `alloy-provider`, `alloy-signer-local` for all Ethereum types and interactions. Solidity structs/functions are defined inline with the `sol!` macro.
 - **RPC dual approach**: alloy `Provider` for standard eth calls, raw reqwest for zkSync-specific RPC methods (`zks_getL2ToL1LogProof`, etc.) via `raw_rpc()`.
+- **Prividium auth**: Commands never call `RpcClient::new(url)` directly — they call `resolved.to_rpc_client().await?`. `ResolvedRpc::to_rpc_client()` transparently performs SIWE auth when `prividium_url` is set and returns an auth-injected client; otherwise returns a plain client. The auth logic lives entirely in `prividium.rs`.
 - **AddressBook**: System contract addresses (InteropCenter `0x...10010`, InteropHandler `0x...1000d`, InteropRootStorage `0x...10008`) are resolved from config → CLI flags → hardcoded defaults.
 - **`--json` flag**: Most commands support structured JSON output alongside human-readable output.
 - **`--dry-run`**: Transaction-sending commands support dry-run simulation via `eth_call` instead of actual submission.

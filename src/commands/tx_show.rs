@@ -5,7 +5,7 @@ use crate::abi::{
 };
 use crate::cli::TxShowArgs;
 use crate::config::Config;
-use crate::rpc::{get_transaction_receipt, RpcClient};
+use crate::rpc::get_transaction_receipt;
 use crate::types::{
     address_to_hex, b256_to_hex, format_hex, u256_to_string, AddressBook, EventView,
     InteropBundleView, TxShowOutput, INTEROP_CENTER_ADDRESS, L1_SENDER_ADDRESS,
@@ -20,7 +20,7 @@ use std::str::FromStr;
 /// Prints bundle information, message hashes, and event summaries.
 pub async fn run(args: TxShowArgs, config: Config, _addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
-    let client = RpcClient::new(&resolved.url).await?;
+    let client = resolved.to_rpc_client().await?;
     let tx_hash = B256::from_str(&args.tx_hash)
         .with_context(|| format!("invalid tx hash {}", args.tx_hash))?;
     let receipt = get_transaction_receipt(&client, tx_hash).await?;

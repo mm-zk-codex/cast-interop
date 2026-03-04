@@ -1,7 +1,7 @@
 use crate::abi::{encode_execute_bundle_call, encode_verify_bundle_call, error_selector_map};
 use crate::cli::BundleActionArgs;
 use crate::config::Config;
-use crate::rpc::{eth_call, RpcClient};
+use crate::rpc::eth_call;
 use crate::signer::{load_signer, SignerOptions};
 use crate::types::{
     require_signer_or_dry_run, AddressBook, MessageInclusionProof, BUNDLE_IDENTIFIER,
@@ -97,7 +97,7 @@ async fn run_bundle_action(
     };
 
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
-    let client = RpcClient::new(&resolved.url).await?;
+    let client = resolved.to_rpc_client().await?;
     if args.dry_run {
         match eth_call(&client, handler, calldata.clone()).await {
             Ok(_) => {

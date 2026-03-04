@@ -1,7 +1,6 @@
 use crate::cli::ExplainArgs;
 use crate::config::Config;
 use crate::encode::decode_evm_v1_address;
-use crate::rpc::RpcClient;
 use crate::signer::{load_signer, signer_address, SignerOptions};
 use crate::types::{AddressBook, MessageInclusionProof};
 use alloy_dyn_abi::SolType;
@@ -25,7 +24,7 @@ struct ExplainItem {
 /// Performs checks on sender, chain IDs, and permissions for the signer.
 pub async fn run(args: ExplainArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
-    let client = RpcClient::new(&resolved.url).await?;
+    let client = resolved.to_rpc_client().await?;
     let chain_id = client.provider.get_chain_id().await?;
 
     let bundle_bytes = load_hex_or_path(&args.bundle)?;
