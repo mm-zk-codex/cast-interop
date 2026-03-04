@@ -190,6 +190,7 @@ pub async fn run(args: AutoRelayArgs, _config: Config, addresses: AddressBook) -
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn chain_poll_loop(
     index: usize,
     chain: ChainRuntime,
@@ -267,7 +268,7 @@ async fn scan_block(
         BlockTransactions::Hashes(hashes) => hashes,
         BlockTransactions::Full(txs) => txs
             .into_iter()
-            .map(|tx| tx.into_inner().hash().clone())
+            .map(|tx| *tx.into_inner().hash())
             .collect(),
         _ => Vec::new(),
     };
@@ -412,6 +413,7 @@ fn insert_job(state: &Arc<Mutex<AppState>>, detected: DetectedJob) -> Result<()>
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn job_processor_loop(
     state: Arc<Mutex<AppState>>,
     chains: Vec<ChainRuntime>,
@@ -476,6 +478,7 @@ async fn job_processor_loop(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn process_job(
     state: &Arc<Mutex<AppState>>,
     chains: &[ChainRuntime],

@@ -725,7 +725,7 @@ async fn send_tx(
 
     let pending = decode_send_transaction(provider.send_transaction(request).await)?;
 
-    let tx_hash = pending.tx_hash().clone();
+    let tx_hash = *pending.tx_hash();
     let _receipt = pending.get_receipt().await?;
     Ok(format!("{tx_hash:#x}"))
 }

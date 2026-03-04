@@ -304,6 +304,7 @@ pub struct TokenCommand {
 
 /// Token subcommands.
 #[derive(Subcommand, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum TokenSubcommand {
     #[command(
         about = "Get wrapped token info.",
@@ -758,9 +759,15 @@ pub struct RelayArgs {
         long,
         value_name = "INDEX",
         default_value_t = 0,
-        help = "Message index within the transaction. Default: 0."
+        help = "Message index of the bundle to relay within the transaction. Default: 0. Ignored when --all is set."
     )]
     pub msg_index: u32,
+
+    #[arg(
+        long,
+        help = "Relay all bundles emitted by the transaction. Default: false."
+    )]
+    pub all: bool,
 
     #[arg(
         long,
