@@ -14,11 +14,15 @@ struct RpcPingOutput {
     latest_block: Option<u64>,
     finalized_block: Option<String>,
     client_version: Option<String>,
+    is_l1: bool,
+    chain_type: String,
+    zks_methods_available: Option<bool>,
 }
 
 /// Check RPC connectivity and feature support.
 ///
-/// Reports chain ID, latest/finalized blocks, and client version.
+/// Reports chain ID, latest/finalized blocks, client version, and zkSync method availability.
+/// For L1 chains (configured with --l1), zkSync-specific methods are not checked.
 pub async fn run(args: RpcPingArgs, config: Config, _addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
     let client = RpcClient::new(&resolved.url).await?;
@@ -38,11 +42,29 @@ pub async fn run(args: RpcPingArgs, config: Config, _addresses: AddressBook) -> 
         .await
         .ok();
 
+    // For L1 chains, zks_* methods are not expected.
+    let zks_methods_available = if resolved.is_l1 {
+        None
+    } else {
+        let probe: Result<Option<serde_json::Value>> =
+            raw_rpc(&client, "zks_L1ChainId", json!([])).await;
+        Some(probe.is_ok())
+    };
+
+    let chain_type = if resolved.is_l1 {
+        "L1 (Ethereum)".to_string()
+    } else {
+        "L2 (zkSync)".to_string()
+    };
+
     let output = RpcPingOutput {
         chain_id,
         latest_block,
         finalized_block,
         client_version,
+        is_l1: resolved.is_l1,
+        chain_type,
+        zks_methods_available,
     };
 
     if args.json {
@@ -57,6 +79,7 @@ pub async fn run(args: RpcPingArgs, config: Config, _addresses: AddressBook) -> 
             .clone()
             .unwrap_or_else(|| "unknown".to_string())
     );
+    println!("chainType: {}", output.chain_type);
     println!(
         "latest block: {}",
         output
@@ -78,6 +101,11 @@ pub async fn run(args: RpcPingArgs, config: Config, _addresses: AddressBook) -> 
             .clone()
             .unwrap_or_else(|| "n/a".to_string())
     );
+    match output.zks_methods_available {
+        Some(true) => println!("zks_* methods: available"),
+        Some(false) => println!("zks_* methods: not available"),
+        None => println!("zks_* methods: not checked (L1 chain)"),
+    }
 
     Ok(())
 }

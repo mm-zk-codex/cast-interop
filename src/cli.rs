@@ -444,7 +444,11 @@ pub struct AutoRelayArgs {
     )]
     pub rpc: Vec<String>,
 
-    #[arg(long, value_name = "HEX", help = "Private key hex string. Default: unset.")]
+    #[arg(
+        long,
+        value_name = "HEX",
+        help = "Private key hex string. Default: unset."
+    )]
     pub private_key: Option<String>,
 
     #[arg(
@@ -840,6 +844,12 @@ pub struct ChainsAddArgs {
 
     #[arg(long, value_name = "RPC_URL", help = "RPC URL for the chain.")]
     pub rpc: String,
+
+    #[arg(
+        long,
+        help = "Mark this chain as an Ethereum L1. zkSync-specific RPC methods (zks_*) will not be called for L1 chains. Default: false."
+    )]
+    pub l1: bool,
 }
 
 /// Remove a chain alias.

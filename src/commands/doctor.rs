@@ -70,63 +70,77 @@ pub async fn run(args: DoctorArgs, config: Config, addresses: AddressBook) -> Re
             name: "finalized_block".to_string(),
             status: "warn".to_string(),
             details: format!("finalized block not supported: {err}"),
-            hint: Some("Use a zkSync RPC or one that supports finalized blocks.".to_string()),
+            hint: Some(if resolved.is_l1 {
+                "Ensure the L1 RPC supports eth_getBlockByNumber(\"finalized\") (requires a post-merge endpoint).".to_string()
+            } else {
+                "Use a zkSync RPC or one that supports finalized blocks.".to_string()
+            }),
         }),
     };
 
-    let proof_check = raw_rpc::<serde_json::Value>(
-        &client,
-        "zks_getL2ToL1LogProof",
-        json!([
-            "0x0000000000000000000000000000000000000000000000000000000000000000",
-            0
-        ]),
-    )
-    .await;
-    match proof_check {
-        Ok(_) => checks.push(DoctorCheck {
-            name: "get_log_proof".to_string(),
+    if resolved.is_l1 {
+        checks.push(DoctorCheck {
+            name: "chain_type".to_string(),
             status: "ok".to_string(),
-            details: "zks_getL2ToL1LogProof reachable".to_string(),
-            hint: None,
-        }),
-        Err(err) => {
-            let message = err.to_string();
-            let status =
-                if message.contains("Method not found") || message.contains("method not found") {
-                    "warn"
-                } else {
-                    "warn"
-                };
-            checks.push(DoctorCheck {
+            details: "L1 chain — zkSync-specific checks skipped".to_string(),
+            hint: Some(
+                "L1 chains do not support zks_* methods or interop contracts. \
+                Use an L2 chain for relay operations."
+                    .to_string(),
+            ),
+        });
+    } else {
+        let proof_check = raw_rpc::<serde_json::Value>(
+            &client,
+            "zks_getL2ToL1LogProof",
+            json!([
+                "0x0000000000000000000000000000000000000000000000000000000000000000",
+                0
+            ]),
+        )
+        .await;
+        match proof_check {
+            Ok(_) => checks.push(DoctorCheck {
                 name: "get_log_proof".to_string(),
-                status: status.to_string(),
-                details: format!("log proof call failed: {message}"),
-                hint: Some("RPC must support zks_getL2ToL1LogProof to fetch proofs.".to_string()),
-            });
+                status: "ok".to_string(),
+                details: "zks_getL2ToL1LogProof reachable".to_string(),
+                hint: None,
+            }),
+            Err(err) => {
+                let message = err.to_string();
+                checks.push(DoctorCheck {
+                    name: "get_log_proof".to_string(),
+                    status: "warn".to_string(),
+                    details: format!("log proof call failed: {message}"),
+                    hint: Some(
+                        "RPC must support zks_getL2ToL1LogProof to fetch proofs.".to_string(),
+                    ),
+                });
+            }
         }
-    }
 
-    checks
-        .extend(check_contract("interop_center", addresses.interop_center, &client, &config).await);
-    checks.extend(
-        check_contract(
-            "interop_handler",
-            addresses.interop_handler,
-            &client,
-            &config,
-        )
-        .await,
-    );
-    checks.extend(
-        check_contract(
-            "interop_root_storage",
-            addresses.interop_root_storage,
-            &client,
-            &config,
-        )
-        .await,
-    );
+        checks.extend(
+            check_contract("interop_center", addresses.interop_center, &client, &config).await,
+        );
+        checks.extend(
+            check_contract(
+                "interop_handler",
+                addresses.interop_handler,
+                &client,
+                &config,
+            )
+            .await,
+        );
+        checks.extend(
+            check_contract(
+                "interop_root_storage",
+                addresses.interop_root_storage,
+                &client,
+                &config,
+            )
+            .await,
+        );
+    }
 
     output_checks(args.json, checks)
 }

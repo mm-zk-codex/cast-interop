@@ -13,6 +13,7 @@ struct ChainListItem {
     alias: String,
     rpc: String,
     chain_id: Option<String>,
+    is_l1: bool,
 }
 
 /// List configured chain aliases and their RPC URLs.
@@ -30,6 +31,7 @@ pub async fn run_list(args: ChainsListArgs, config: Config, _addresses: AddressB
             alias,
             rpc: redact_url(&cfg.rpc),
             chain_id: chain_id.map(|id| id.to_string()),
+            is_l1: cfg.is_l1.unwrap_or(false),
         });
     }
 
@@ -43,10 +45,14 @@ pub async fn run_list(args: ChainsListArgs, config: Config, _addresses: AddressB
         return Ok(());
     }
 
-    println!("{:<12} {:<10} {}", "alias", "chainId", "rpc");
+    println!("{:<12} {:<10} {:<6} {}", "alias", "chainId", "type", "rpc");
     for item in items {
         let chain_id = item.chain_id.unwrap_or_else(|| "unknown".to_string());
-        println!("{:<12} {:<10} {}", item.alias, chain_id, item.rpc);
+        let chain_type = if item.is_l1 { "L1" } else { "L2" };
+        println!(
+            "{:<12} {:<10} {:<6} {}",
+            item.alias, chain_id, chain_type, item.rpc
+        );
     }
 
     Ok(())
@@ -67,11 +73,12 @@ pub async fn run_add(
         .context("failed to fetch eth_chainId")?;
     let chain_id = u64::try_from(chain_id).map_err(|_| anyhow!("chainId too large"))?;
 
-    config.set_chain(args.alias.clone(), rpc.to_string(), chain_id);
+    config.set_chain(args.alias.clone(), rpc.to_string(), chain_id, args.l1);
     config.save()?;
 
+    let type_label = if args.l1 { " [L1]" } else { "" };
     println!(
-        "added chain {alias} (chainId {chain_id})",
+        "added chain {alias} (chainId {chain_id}){type_label}",
         alias = args.alias
     );
     Ok(())
@@ -101,6 +108,7 @@ fn legacy_chains(config: &Config) -> BTreeMap<String, ChainConfig> {
                 ChainConfig {
                     rpc: url.clone(),
                     chain_id: None,
+                    is_l1: None,
                 },
             );
         }
@@ -110,6 +118,7 @@ fn legacy_chains(config: &Config) -> BTreeMap<String, ChainConfig> {
                 ChainConfig {
                     rpc: url.clone(),
                     chain_id: None,
+                    is_l1: None,
                 },
             );
         }
@@ -119,6 +128,7 @@ fn legacy_chains(config: &Config) -> BTreeMap<String, ChainConfig> {
                 ChainConfig {
                     rpc: url.clone(),
                     chain_id: None,
+                    is_l1: None,
                 },
             );
         }
