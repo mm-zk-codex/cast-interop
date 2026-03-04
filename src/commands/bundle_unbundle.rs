@@ -6,10 +6,11 @@ use crate::commands::bundle_action::{
 use crate::config::Config;
 use crate::rpc::{eth_call, RpcClient};
 use crate::signer::{load_signer, SignerOptions};
-use crate::types::{require_signer_or_dry_run, AddressBook};
-use alloy_primitives::{Address, Bytes, U256};
+use crate::types::{require_signer_or_dry_run, AddressBook, InteropBundle};
+use alloy_primitives::{Address, Bytes};
 use alloy_provider::{Provider, ProviderBuilder};
 use alloy_rpc_types::TransactionInput;
+use alloy_sol_types::SolValue;
 use anyhow::{Context, Result};
 use serde::Serialize;
 use std::str::FromStr;
@@ -70,9 +71,8 @@ struct UnbundleOutput {
 /// Execute the `bundle unbundle` subcommand.
 ///
 /// Calls `unbundleBundle` on the InteropHandler, allowing individual calls in a bundle
-/// to be marked as `Executed` or `Cancelled` independently.  This is useful when only
-/// a subset of a bundle's calls should proceed, or to cancel stuck calls after the
-/// bundle has been verified.
+/// to be marked as `Executed` or `Cancelled` independently. Useful when only a subset
+/// of a bundle's calls should proceed, or to cancel stuck calls after verification.
 pub async fn run(args: UnbundleArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let handler = args
         .handler
@@ -94,8 +94,9 @@ pub async fn run(args: UnbundleArgs, config: Config, addresses: AddressBook) -> 
 
     let encoded_bundle = load_hex_or_path(&args.bundle)?;
 
-    let source_chain_id = config.resolve_chain_id(&args.source_chain_id)?;
-    let source_chain_id_u256 = U256::from_be_bytes(source_chain_id.to_be_bytes::<32>());
+    // Decode the bundle to validate call count before hitting the network.
+    let bundle =
+        InteropBundle::abi_decode(&encoded_bundle).context("failed to decode bundle bytes")?;
 
     let call_statuses: Vec<CallStatus> = args
         .call_statuses
@@ -104,21 +105,27 @@ pub async fn run(args: UnbundleArgs, config: Config, addresses: AddressBook) -> 
         .collect::<Result<Vec<_>>>()
         .context("invalid --call-statuses")?;
 
+    if call_statuses.len() != bundle.calls.len() {
+        anyhow::bail!(
+            "--call-statuses has {} entries but the bundle has {} call(s)",
+            call_statuses.len(),
+            bundle.calls.len()
+        );
+    }
+
+    let source_chain_id = config.resolve_chain_id(&args.source_chain_id)?;
     let status_bytes: Vec<u8> = call_statuses.iter().map(|s| s.as_u8()).collect();
 
-    let calldata = encode_unbundle_bundle_call(
-        source_chain_id_u256,
-        Bytes::from(encoded_bundle),
-        status_bytes,
-    );
+    let calldata =
+        encode_unbundle_bundle_call(source_chain_id, Bytes::from(encoded_bundle), status_bytes);
 
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
     let client = RpcClient::new(&resolved.url).await?;
 
-    let mut tx_hash = None;
+    let status_strings: Vec<String> = call_statuses.iter().map(|s| s.to_string()).collect();
 
     if args.dry_run {
-        match eth_call(&client, handler, calldata.clone()).await {
+        match eth_call(&client, handler, calldata).await {
             Ok(_) => println!("dry-run success"),
             Err(err) => {
                 if let Some(reason) = decode_revert_reason(err.to_string()) {
@@ -128,48 +135,56 @@ pub async fn run(args: UnbundleArgs, config: Config, addresses: AddressBook) -> 
                 }
             }
         }
-    } else {
-        let wallet = wallet.expect("wallet required");
-        let chain_id = client.provider.get_chain_id().await?;
-
-        let provider = ProviderBuilder::new()
-            .wallet(wallet)
-            .with_chain_id(chain_id)
-            .connect(&resolved.url)
-            .await?;
-
-        let request = alloy_rpc_types::TransactionRequest {
-            to: Some(alloy_primitives::TxKind::Call(handler)),
-            input: TransactionInput::new(calldata),
-            ..Default::default()
-        };
-
-        let pending = decode_send_transaction(provider.send_transaction(request).await)?;
-        let hash = pending.tx_hash();
-        tx_hash = Some(format!("{hash:#x}"));
-        println!("sent tx: {hash:#x}");
+        if args.json {
+            let output = UnbundleOutput {
+                handler: format!("{handler:#x}"),
+                source_chain_id: source_chain_id.to_string(),
+                call_count: call_statuses.len(),
+                call_statuses: status_strings,
+                dry_run: true,
+                tx_hash: None,
+            };
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        }
+        return Ok(());
     }
 
-    let output = UnbundleOutput {
-        handler: format!("{handler:#x}"),
-        source_chain_id: source_chain_id.to_string(),
-        call_count: call_statuses.len(),
-        call_statuses: call_statuses.iter().map(|s| s.to_string()).collect(),
-        dry_run: args.dry_run,
-        tx_hash: tx_hash.clone(),
+    let wallet = wallet.expect("wallet required");
+    let chain_id = client.provider.get_chain_id().await?;
+
+    let provider = ProviderBuilder::new()
+        .wallet(wallet)
+        .with_chain_id(chain_id)
+        .connect(&resolved.url)
+        .await?;
+
+    let request = alloy_rpc_types::TransactionRequest {
+        to: Some(alloy_primitives::TxKind::Call(handler)),
+        input: TransactionInput::new(calldata),
+        ..Default::default()
     };
 
+    let pending = decode_send_transaction(provider.send_transaction(request).await)?;
+    let hash = pending.tx_hash();
+    let tx_hash = format!("{hash:#x}");
+    println!("sent tx: {tx_hash}");
+
     if args.json {
+        let output = UnbundleOutput {
+            handler: format!("{handler:#x}"),
+            source_chain_id: source_chain_id.to_string(),
+            call_count: call_statuses.len(),
+            call_statuses: status_strings,
+            dry_run: false,
+            tx_hash: Some(tx_hash),
+        };
         println!("{}", serde_json::to_string_pretty(&output)?);
-    } else if !args.dry_run {
+    } else {
         println!(
             "unbundleBundle sent: {} call(s) → [{}]",
-            output.call_count,
-            output.call_statuses.join(", ")
+            call_statuses.len(),
+            status_strings.join(", ")
         );
-        if let Some(hash) = &tx_hash {
-            println!("tx: {hash}");
-        }
     }
 
     Ok(())
@@ -178,6 +193,7 @@ pub async fn run(args: UnbundleArgs, config: Config, addresses: AddressBook) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy_primitives::{Bytes, U256};
 
     #[test]
     fn test_parse_call_status_words() {
