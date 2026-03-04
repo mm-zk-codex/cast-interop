@@ -70,7 +70,11 @@ pub async fn run(args: DoctorArgs, config: Config, addresses: AddressBook) -> Re
             name: "finalized_block".to_string(),
             status: "warn".to_string(),
             details: format!("finalized block not supported: {err}"),
-            hint: Some("Use a zkSync RPC or one that supports finalized blocks.".to_string()),
+            hint: Some(if resolved.is_l1 {
+                "Ensure the L1 RPC supports eth_getBlockByNumber(\"finalized\") (requires a post-merge endpoint).".to_string()
+            } else {
+                "Use a zkSync RPC or one that supports finalized blocks.".to_string()
+            }),
         }),
     };
 

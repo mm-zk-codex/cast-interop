@@ -14,6 +14,7 @@ struct RpcPingOutput {
     latest_block: Option<u64>,
     finalized_block: Option<String>,
     client_version: Option<String>,
+    is_l1: bool,
     chain_type: String,
     zks_methods_available: Option<bool>,
 }
@@ -61,6 +62,7 @@ pub async fn run(args: RpcPingArgs, config: Config, _addresses: AddressBook) -> 
         latest_block,
         finalized_block,
         client_version,
+        is_l1: resolved.is_l1,
         chain_type,
         zks_methods_available,
     };

@@ -829,7 +829,6 @@ pub struct RelayArgs {
     pub json: bool,
 }
 
-
 /// List configured chains.
 #[derive(Args, Debug)]
 pub struct ChainsListArgs {
