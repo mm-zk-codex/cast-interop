@@ -71,6 +71,7 @@ impl Cli {
             Command::Encode(cmd) => cmd.run(config, addresses).await,
             Command::Chains(cmd) => cmd.run(config, addresses).await,
             Command::AutoRelay(args) => commands::auto_relay::run(args, config, addresses).await,
+            Command::Serve(args) => commands::serve::run(args, config, addresses).await,
         }
     }
 }
@@ -113,6 +114,11 @@ pub enum Command {
         long_about = "Watch multiple chains, detect interop bundle sends, fetch proofs, wait for roots, and execute on matching destination chains.\nUse this for continuous relaying across a set of RPC endpoints.\nExample: cast-interop auto-relay --rpc http://localhost:3050 --rpc http://localhost:3051 --private-key $PRIVATE_KEY"
     )]
     AutoRelay(AutoRelayArgs),
+    #[command(
+        about = "Start the relay API server.",
+        long_about = "Start an HTTP server that exposes relay records (stored by `bundle relay`) as a REST API.\nFrontends can query bundle/tx status using an API key.\nExample: cast-interop serve --bind 127.0.0.1:8080 --api-key mysecret"
+    )]
+    Serve(ServeArgs),
 }
 
 /// Debug and observability helpers.
@@ -823,6 +829,15 @@ pub struct RelayArgs {
 
     #[arg(long, help = "Emit JSON output. Default: false.")]
     pub json: bool,
+
+    /// Skip storing the relay result to the local store. Default: false (always store).
+    #[arg(long, default_value = "false")]
+    pub no_store: bool,
+
+    /// Path to the relay store file used by `cast-interop serve`.
+    /// Default: ~/.config/cast-interop/relays.json.
+    #[arg(long, value_name = "PATH")]
+    pub store_path: Option<PathBuf>,
 }
 
 /// List configured chains.
@@ -1428,4 +1443,29 @@ pub struct ExplainArgs {
 
     #[arg(long, help = "Emit JSON output. Default: false.")]
     pub json: bool,
+}
+
+/// Start the relay API server.
+#[derive(Args, Debug)]
+pub struct ServeArgs {
+    /// Address to bind the HTTP server. Default: 127.0.0.1:8080.
+    #[arg(long, default_value = "127.0.0.1:8080", value_name = "ADDR")]
+    pub bind: String,
+
+    /// API key required in the `X-Api-Key` header.
+    /// Falls back to `CAST_INTEROP_API_KEY` env var, then auto-generates one on startup.
+    #[arg(long, value_name = "KEY", env = "CAST_INTEROP_API_KEY")]
+    pub api_key: Option<String>,
+
+    /// Allowed CORS origin. Use `*` for any origin (default). Set to your frontend URL in production.
+    #[arg(long, value_name = "ORIGIN")]
+    pub cors_origin: Option<String>,
+
+    /// Path to the relay store file. Default: ~/.config/cast-interop/relays.json.
+    #[arg(long, value_name = "PATH")]
+    pub store_path: Option<std::path::PathBuf>,
+
+    /// Clear the store before starting the server.
+    #[arg(long, default_value = "false")]
+    pub clear: bool,
 }

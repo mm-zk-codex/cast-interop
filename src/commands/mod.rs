@@ -15,3 +15,4 @@ pub mod status;
 pub mod token;
 pub mod tx_show;
 pub mod watch;
+pub mod serve;
