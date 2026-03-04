@@ -1460,17 +1460,23 @@ pub struct BalancesArgs {
     #[arg(
         long,
         value_name = "CHAIN",
-        help = "Limit query to a single chain alias. Default: all configured chains."
+        help = "Limit query to a single chain alias (from config). Mutually exclusive with --rpc."
     )]
     pub chain: Option<String>,
 
     #[arg(
         long,
         value_name = "RPC_URL",
-        help = "Query a specific RPC URL directly instead of using config chains."
+        help = "Query a specific RPC URL directly. Mutually exclusive with --chain."
     )]
     pub rpc: Option<String>,
 
-    #[arg(long, help = "Emit JSON output. Default: false.")]
+    #[arg(long, help = "Emit JSON output.")]
     pub json: bool,
+
+    #[arg(
+        long,
+        help = "Hide chains where every balance is zero. Useful when scanning many chains."
+    )]
+    pub hide_zero: bool,
 }
