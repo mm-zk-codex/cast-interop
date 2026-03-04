@@ -195,3 +195,40 @@ pub fn format_gas_estimate(gas: u64, gas_price: u128) -> String {
     let cost_eth = cost_wei as f64 / 1e18;
     format!("estimated gas: {gas}  |  gas price: {gas_price_gwei:.3} gwei  |  cost: {cost_eth:.9} ETH")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_gas_estimate_typical() {
+        // 100,000 gas at 1 gwei = 0.0001 ETH
+        let s = format_gas_estimate(100_000, 1_000_000_000);
+        assert!(s.contains("100000"));
+        assert!(s.contains("1.000 gwei"));
+        assert!(s.contains("0.000100000 ETH"));
+    }
+
+    #[test]
+    fn format_gas_estimate_zero_gas() {
+        let s = format_gas_estimate(0, 1_000_000_000);
+        assert!(s.contains("0.000000000 ETH"));
+    }
+
+    #[test]
+    fn format_gas_estimate_high_price() {
+        // 21,000 gas at 100 gwei = 0.0021 ETH
+        let s = format_gas_estimate(21_000, 100_000_000_000);
+        assert!(s.contains("21000"));
+        assert!(s.contains("100.000 gwei"));
+        assert!(s.contains("0.002100000 ETH"));
+    }
+
+    #[test]
+    fn format_gas_estimate_contains_all_fields() {
+        let s = format_gas_estimate(1, 1);
+        assert!(s.contains("estimated gas:"));
+        assert!(s.contains("gas price:"));
+        assert!(s.contains("cost:"));
+    }
+}
