@@ -137,14 +137,29 @@ Remember the batch number - this is the source chain batch number, that your tra
 
 ## Step 5b: Verify the proof offline before spending gas
 
-Before waiting for the root and executing, confirm the proof is cryptographically valid.
-This is a pure offline check — no signing or gas required:
+You now have `proof.json` on disk. Before proceeding to execute on the destination chain,
+confirm the proof is cryptographically valid. This matters because:
+
+- If the proof is **mathematically wrong** (wrong tx hash, wrong msg_index, corrupted nodes),
+  you'll learn that now — for free — rather than after spending gas on a failed `bundle execute`.
+- If the root **hasn't propagated yet**, this tells you to wait. Without this check, you'd get a
+  confusing `MessageNotIncluded` revert from `bundle execute` and not know whether to wait or
+  refetch the proof.
+
+The check is pure offline cryptography — no signing, no gas, no chain state required (though
+`--dest-chain` does a live root presence check):
 
 ```shell
 cargo run debug proof-verify /tmp/proof.json \
   --bundle /tmp/bundle.hex \
   --dest-chain http://localhost:3051
 ```
+
+What this does:
+1. Reconstructs the L2→L1 log leaf hash from the proof's message fields (tx number, sender, data)
+2. Walks the Merkle tree using the proof nodes
+3. Compares the computed root to `proof.root` (the value returned by the zkSync RPC)
+4. With `--dest-chain`: also calls `interopRoots(chainId, batchNumber)` to confirm the root is stored on the destination chain
 
 Expected output when the proof is valid and the root is already on-chain:
 
@@ -162,10 +177,14 @@ leaf hash:     0x3a8f...c291
 ✅ VALID — proof is cryptographically correct and interopRoots(6565, 55) is confirmed on dest chain; safe to call bundle verify/execute.
 ```
 
-If the root is not yet on-chain the overall verdict says `NOT YET READY` rather than `INVALID`, so
-you always know whether the problem is the proof itself or just timing.
+If the root is not yet on-chain, the verdict says `NOT YET READY` (not `INVALID`) — you know
+to wait for step 6 without questioning whether your proof is correct.
 
-Use `--verbose` to print every Merkle step — helpful when debugging a proof mismatch:
+If you ever get `INVALID`, the proof itself has bad data. Check that you used the right tx hash
+and `--msg-index`, and re-fetch the proof.
+
+Use `--verbose` to print every Merkle step — useful when you need to see exactly which level of
+the tree produces an unexpected hash:
 
 ```shell
 cargo run debug proof-verify /tmp/proof.json --bundle /tmp/bundle.hex --verbose

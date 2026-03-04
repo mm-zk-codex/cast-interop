@@ -2,14 +2,24 @@
 
 ## Prerequisites: validate chain configuration
 
-Before starting the auto-relayer, verify that every configured chain alias has a reachable RPC
-and a correct chainId. The auto-relayer runs continuously and silently skips bundles it cannot
-relay — a misconfigured chainId is especially dangerous because it causes every relay attempt to
-fail with confusing errors rather than a clear misconfiguration message.
+Before starting the auto-relayer, run:
 
 ```bash
 cast-interop chains validate
 ```
+
+**Why this matters for auto-relay specifically:**
+
+The auto-relayer watches chains continuously and relays every `InteropBundleSent` event it sees.
+If a chain alias has a stale chainId in the config (e.g. because the testnet was reset or a config
+was copied from a different environment), the relayer will silently fail every single bundle it
+tries to relay — with errors like `WrongDestinationChainId` that don't point at the config as the
+cause. You could watch hundreds of jobs fail before realising the chainId was wrong from the start.
+
+`chains validate` catches this before you start, along with two other silent failure modes:
+- **RPC unreachable** — a chain that's down will block proof fetching for all bundles destined to it
+- **Missing zkSync methods** — a generic public RPC node that doesn't support `zks_getL2ToL1LogProof`
+  or `zks_getL1BatchNumber` will cause proof fetching to fail with network-looking errors
 
 Example output (healthy):
 
@@ -29,7 +39,7 @@ chain: test
 2 chain(s) validated — 0 failure(s), 0 warning(s)
 ```
 
-If any chain shows a `chain_id_match` failure, re-add it:
+If any chain shows a `chain_id_match` failure, re-add it to refresh the stored chainId:
 
 ```bash
 cast-interop chains rm <alias>
