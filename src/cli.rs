@@ -319,7 +319,7 @@ pub enum TokenSubcommand {
         about = "Send a token across chains.",
         long_about = "Send an ERC20 across chains via interop (Type B flow).\nUse this for cross-chain token transfers, with optional watch mode.\nExample: cast-interop token send --chain-src era --chain-dest test --token 0xTOKEN --amount 1 --to 0xRECIPIENT --private-key $PRIVATE_KEY"
     )]
-    Send(TokenSendArgs),
+    Send(Box<TokenSendArgs>),
 }
 
 impl TokenCommand {
@@ -330,7 +330,9 @@ impl TokenCommand {
             TokenSubcommand::Balance(args) => {
                 commands::token::run_balance(args, config, addresses).await
             }
-            TokenSubcommand::Send(args) => commands::token::run_send(args, config, addresses).await,
+            TokenSubcommand::Send(args) => {
+                commands::token::run_send(*args, config, addresses).await
+            }
         }
     }
 }
@@ -444,7 +446,11 @@ pub struct AutoRelayArgs {
     )]
     pub rpc: Vec<String>,
 
-    #[arg(long, value_name = "HEX", help = "Private key hex string. Default: unset.")]
+    #[arg(
+        long,
+        value_name = "HEX",
+        help = "Private key hex string. Default: unset."
+    )]
     pub private_key: Option<String>,
 
     #[arg(

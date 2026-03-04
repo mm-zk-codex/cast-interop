@@ -75,9 +75,10 @@ impl Config {
         };
 
         if !path.exists() {
-            let mut config = Self::default();
-            config.path = path;
-            return Ok(config);
+            return Ok(Self {
+                path,
+                ..Default::default()
+            });
         }
 
         let contents = fs::read_to_string(&path)

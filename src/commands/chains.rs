@@ -3,7 +3,7 @@ use crate::config::{ChainConfig, Config};
 use crate::rpc::RpcClient;
 use crate::types::AddressBook;
 use alloy_provider::Provider;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -43,7 +43,7 @@ pub async fn run_list(args: ChainsListArgs, config: Config, _addresses: AddressB
         return Ok(());
     }
 
-    println!("{:<12} {:<10} {}", "alias", "chainId", "rpc");
+    println!("{:<12} {:<10} rpc", "alias", "chainId");
     for item in items {
         let chain_id = item.chain_id.unwrap_or_else(|| "unknown".to_string());
         println!("{:<12} {:<10} {}", item.alias, chain_id, item.rpc);
@@ -65,8 +65,6 @@ pub async fn run_add(
         .get_chain_id()
         .await
         .context("failed to fetch eth_chainId")?;
-    let chain_id = u64::try_from(chain_id).map_err(|_| anyhow!("chainId too large"))?;
-
     config.set_chain(args.alias.clone(), rpc.to_string(), chain_id);
     config.save()?;
 
