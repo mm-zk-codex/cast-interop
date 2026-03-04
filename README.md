@@ -63,6 +63,7 @@ The example docs in `examples/` assume:
 
 * You run commands from the repository root.
 * You have Foundry tools installed (`forge`, `cast`).
+* If you run commands with `cargo run -- ...`, Rust/Cargo are installed.
 * You have a local zkSync OS environment with at least two chains (commonly `http://localhost:3050` and `http://localhost:3051`).
 
 If you use source execution, pass CLI args through Cargo with `--`:
@@ -75,6 +76,12 @@ If you use the compiled binary, commands are:
 
 ```bash
 ./target/release/cast-interop --help
+```
+
+Build it first if needed:
+
+```bash
+cargo build --release
 ```
 
 ## Configuration
