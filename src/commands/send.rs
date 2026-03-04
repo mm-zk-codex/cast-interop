@@ -7,7 +7,7 @@ use crate::encode::{
     encode_execution_address, encode_indirect_call, encode_interop_call_value,
     encode_unbundler_address, parse_payload, parse_permissionless_address,
 };
-use crate::rpc::{eth_call_with_value, RpcClient};
+use crate::rpc::{self, eth_call_with_value, RpcClient};
 use crate::signer::{load_signer, SignerOptions};
 use crate::types::{parse_address, parse_u256, require_signer_or_dry_run, AddressBook};
 use alloy_primitives::{Address, Bytes, B256, U256};
@@ -65,6 +65,27 @@ pub async fn run_message(
     let calldata = encode_send_message_call(recipient, payload, attributes.clone())?;
 
     let client = RpcClient::new(&resolved.url).await?;
+
+    if args.estimate_gas {
+        match rpc::estimate_gas(
+            &client,
+            addresses.interop_center,
+            calldata.clone(),
+            Some(msg_value),
+            None,
+        )
+        .await
+        {
+            Ok(gas) => match rpc::get_gas_price(&client).await {
+                Ok(price) => println!("{}", rpc::format_gas_estimate(gas, price)),
+                Err(err) => eprintln!("warning: gas price unavailable: {err}"),
+            },
+            Err(err) => eprintln!("gas estimation failed: {err}"),
+        }
+        if !args.dry_run {
+            return Ok(());
+        }
+    }
 
     if args.dry_run {
         let result = eth_call_with_value(
@@ -158,6 +179,28 @@ pub async fn run_bundle(
     let calldata = encode_send_bundle_call(destination_chain, call_starters, bundle_attributes)?;
 
     let client = RpcClient::new(&resolved.url).await?;
+
+    if args.estimate_gas {
+        match rpc::estimate_gas(
+            &client,
+            addresses.interop_center,
+            calldata.clone(),
+            Some(total_value),
+            None,
+        )
+        .await
+        {
+            Ok(gas) => match rpc::get_gas_price(&client).await {
+                Ok(price) => println!("{}", rpc::format_gas_estimate(gas, price)),
+                Err(err) => eprintln!("warning: gas price unavailable: {err}"),
+            },
+            Err(err) => eprintln!("gas estimation failed: {err}"),
+        }
+        if !args.dry_run {
+            return Ok(());
+        }
+    }
+
     if args.dry_run {
         let result = eth_call_with_value(
             &client,

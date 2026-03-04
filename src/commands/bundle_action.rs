@@ -1,7 +1,7 @@
 use crate::abi::{encode_execute_bundle_call, encode_verify_bundle_call, error_selector_map};
 use crate::cli::BundleActionArgs;
 use crate::config::Config;
-use crate::rpc::{eth_call, RpcClient};
+use crate::rpc::{self, eth_call, RpcClient};
 use crate::signer::{load_signer, SignerOptions};
 use crate::types::{
     require_signer_or_dry_run, AddressBook, MessageInclusionProof, BUNDLE_IDENTIFIER,
@@ -71,7 +71,7 @@ async fn run_bundle_action(
         &config,
     )?;
 
-    require_signer_or_dry_run(wallet.is_some(), args.dry_run, cmd)?;
+    require_signer_or_dry_run(wallet.is_some(), args.dry_run || args.estimate_gas, cmd)?;
 
     let encoded_bundle = load_hex_or_path(&args.bundle)?;
     let mut proof = load_proof(&args.proof)?;
@@ -98,6 +98,20 @@ async fn run_bundle_action(
 
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
     let client = RpcClient::new(&resolved.url).await?;
+
+    if args.estimate_gas {
+        match rpc::estimate_gas(&client, handler, calldata.clone(), None, None).await {
+            Ok(gas) => match rpc::get_gas_price(&client).await {
+                Ok(price) => println!("{}", rpc::format_gas_estimate(gas, price)),
+                Err(err) => eprintln!("warning: gas price unavailable: {err}"),
+            },
+            Err(err) => eprintln!("gas estimation failed: {err}"),
+        }
+        if !args.dry_run {
+            return Ok(());
+        }
+    }
+
     if args.dry_run {
         match eth_call(&client, handler, calldata.clone()).await {
             Ok(_) => {

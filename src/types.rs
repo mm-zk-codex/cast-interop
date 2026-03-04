@@ -77,6 +77,31 @@ pub fn require_signer_or_dry_run(has_signer: bool, dry_run: bool, cmd: &str) -> 
     Ok(())
 }
 
+/// Tests for --estimate-gas flag behavior
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --estimate-gas passes `dry_run || estimate_gas` to require_signer_or_dry_run,
+    // so the function must accept true for any combination where at least one is set.
+    #[test]
+    fn estimate_gas_bypasses_signer_requirement() {
+        // simulate: no signer, estimate_gas=true → passed as dry_run=true
+        assert!(require_signer_or_dry_run(false, true, "bundle verify").is_ok());
+    }
+
+    #[test]
+    fn no_signer_no_estimate_gas_errors() {
+        let err = require_signer_or_dry_run(false, false, "bundle verify").unwrap_err();
+        assert!(err.to_string().contains("bundle verify"));
+    }
+
+    #[test]
+    fn signer_present_no_estimate_gas_ok() {
+        assert!(require_signer_or_dry_run(true, false, "bundle verify").is_ok());
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProofMessage {
