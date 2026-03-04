@@ -49,7 +49,7 @@ export DEST_CHAIN_ID=6566
 Now compute ERC-7930 bytes for chainId + address:
 
 ```shell
-cargo run encode 7930 --chain-id $DEST_CHAIN_ID --address $MIRROR_ADDR
+cargo run -- encode 7930 --chain-id $DEST_CHAIN_ID --address $MIRROR_ADDR
 # 0x...
 export DEST_RECIPIENT=0x...
 ```
@@ -83,7 +83,7 @@ cast chain-id -r http://localhost:3050
 # 6565 (example)
 export SRC_CHAIN_ID=6565
 
-cargo run encode 7930 --chain-id $SRC_CHAIN_ID --address $SOURCE_ADDR
+cargo run -- encode 7930 --chain-id $SRC_CHAIN_ID --address $SOURCE_ADDR
 # 0x...
 export TRUSTED_SENDER=0x...
 ```
@@ -129,14 +129,14 @@ export WHITELIST_TX=0x....
 Inspect the source tx (you should see an interop bundle/message being emitted):
 
 ```shell
-cargo run debug tx --rpc http://localhost:3050 $WHITELIST_TX
+cargo run -- debug tx --rpc http://localhost:3050 $WHITELIST_TX
 ```
 
 ### Relay to destination chain
 Now relay the transaction from source to destination:
 
 ```shell
-cargo run bundle relay \
+cargo run -- bundle relay \
   --rpc-src http://localhost:3050 \
   --rpc-dest http://localhost:3051 \
   --tx $WHITELIST_TX \
@@ -158,7 +158,7 @@ cast call -r http://localhost:3051 $MIRROR_ADDR "isWhitelisted(address)(bool)" $
 You can also inspect the execute tx logs on destination:
 
 ```shell
-cargo run debug tx --rpc http://localhost:3051 $EXECUTE_TX
+cargo run -- debug tx --rpc http://localhost:3051 $EXECUTE_TX
 # should show WhitelistUpdated(action=1, account=..., isWhitelistedNow=true)
 ```
 
@@ -168,24 +168,24 @@ If relay is stuck:
 * Check the source tx events:
 
 ```shell
-cargo run debug tx --rpc http://localhost:3050 $WHITELIST_TX
+cargo run -- debug tx --rpc http://localhost:3050 $WHITELIST_TX
 ```
 
 * Fetch proof:
 
 ```shell
-cargo run debug proof --rpc http://localhost:3050 --tx $WHITELIST_TX
+cargo run -- debug proof --rpc http://localhost:3050 --tx $WHITELIST_TX
 ```
 
 * Wait for root:
 
 ```shell
 # fill in batch + root from debug proof output
-cargo run debug root --rpc http://localhost:3051 --source-chain $SRC_CHAIN_ID --batch <BATCH> --expected-root <ROOT>
+cargo run -- debug root --rpc http://localhost:3051 --source-chain $SRC_CHAIN_ID --batch <BATCH> --expected-root <ROOT>
 ```
 
 * Check bundle status on destination once you know the bundle hash:
 
 ```shell
-cargo run bundle status --rpc http://localhost:3051 --bundle-hash <BUNDLE_HASH>
+cargo run -- bundle status --rpc http://localhost:3051 --bundle-hash <BUNDLE_HASH>
 ```

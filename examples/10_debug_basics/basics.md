@@ -50,7 +50,7 @@ We send a greeting message from the source chain (3050).
 ```shell
 cast abi-encode "f(string)" "hello from debug" > /tmp/message
 
-cargo run send message \
+cargo run -- send message \
   --rpc http://localhost:3050 \
   --to-chain 6566 \
   --to $CONTRACT_ADDR \
@@ -72,7 +72,7 @@ export MESSAGE_TX=0x277d63aeaa0ad66a7b7c7b48ff1a5a0395b543b9a72da62064fc9ce2be6f
 Let’s inspect what the transaction actually produced.
 
 ```shell
-cargo run debug tx --rpc http://localhost:3050 $MESSAGE_TX
+cargo run -- debug tx --rpc http://localhost:3050 $MESSAGE_TX
 ```
 
 This command shows:
@@ -89,7 +89,7 @@ behind the scenes, and the interop root is being shared with the destination cha
 Now we extract the encoded interop bundle and store it in a file.
 
 ```shell
-cargo run bundle extract \
+cargo run -- bundle extract \
   --rpc http://localhost:3050 \
   --tx $MESSAGE_TX \
   --out /tmp/bundle.hex
@@ -101,7 +101,7 @@ This file contains the ABI-encoded InteropBundle that will later be executed on 
 Before execution, we need the message inclusion proof. It will be available only once your transaction is finalized (on local machine should happen within couple seconds).
 
 ```shell
-cargo run debug proof \
+cargo run -- debug proof \
   --rpc http://localhost:3050 \
   --tx $MESSAGE_TX \
   --out /tmp/proof.json
@@ -117,7 +117,7 @@ Remember the batch number - this is the source chain batch number, that your tra
 The destination chain must first receive the interop root.
 
 ```shell
-cargo run debug root \
+cargo run -- debug root \
   --source-chain 6565 \
   --rpc http://localhost:3051 \
   --batch $BATCH_NUMBER
@@ -129,7 +129,7 @@ This command waits until the root is available and prints it.
 Now we execute the bundle on the destination chain using the files we saved.
 
 ```shell
-cargo run bundle execute \
+cargo run -- bundle execute \
   --rpc http://localhost:3051 \
   --bundle /tmp/bundle.hex \
   --proof /tmp/proof.json \
@@ -152,7 +152,7 @@ cast call -r http://localhost:3051 $CONTRACT_ADDR "message()(string)"
 You can also inspect the execution transaction:
 
 ```shell
-cargo run debug tx --rpc http://localhost:3051 $SENT_TX
+cargo run -- debug tx --rpc http://localhost:3051 $SENT_TX
 ```
 
 ## What you learned

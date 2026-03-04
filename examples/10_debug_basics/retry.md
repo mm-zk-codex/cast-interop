@@ -48,7 +48,7 @@ cast chain-id -r http://localhost:3051
 # 6566 (example)
 export DEST_CHAIN_ID=6566
 
-cargo run encode 7930 --chain-id $DEST_CHAIN_ID --address $MIRROR_ADDR
+cargo run -- encode 7930 --chain-id $DEST_CHAIN_ID --address $MIRROR_ADDR
 # 0x...
 export DEST_RECIPIENT=0x...
 ```
@@ -94,18 +94,18 @@ export WL_TX=0x....
 Inspect the source tx:
 
 ```shell
-cargo run debug tx --rpc http://localhost:3050  $WL_TX
+cargo run -- debug tx --rpc http://localhost:3050  $WL_TX
 ```
 
 ### Step 4: Capture bundle + proof into files (for retries)
 
 ```shell
-cargo run bundle extract \
+cargo run -- bundle extract \
   --rpc http://localhost:3050 \
   --tx $WL_TX \
   --out /tmp/wl.bundle.hex
 
-cargo run debug proof \
+cargo run -- debug proof \
   --rpc http://localhost:3050 \
   --tx $WL_TX \
   --out /tmp/wl.proof.json
@@ -117,7 +117,7 @@ export BATCH_NUM=XX
 ### Step 5: Wait for interop root on destination
 
 ```shell
-cargo run debug root \
+cargo run -- debug root \
   --source-chain 6565 \
   --rpc http://localhost:3051 \
   --batch $BATCH_NUM
@@ -128,7 +128,7 @@ cargo run debug root \
 Now execute the bundle on destination using the stored files:
 
 ```shell
-cargo run bundle execute \
+cargo run -- bundle execute \
   --rpc http://localhost:3051 \
   --bundle /tmp/wl.bundle.hex \
   --proof /tmp/wl.proof.json \
@@ -141,7 +141,7 @@ cargo run bundle execute \
 
 While the execution is failing, you can still verify that bundle itself is correct.
 ```shell
-cargo run bundle verify \
+cargo run -- bundle verify \
   --rpc http://localhost:3051 \
   --bundle /tmp/wl.bundle.hex \
   --proof /tmp/wl.proof.json \
@@ -162,7 +162,7 @@ cast chain-id -r http://localhost:3050
 # 6565 (example)
 export SRC_CHAIN_ID=6565
 
-cargo run encode 7930 --chain-id $SRC_CHAIN_ID --address $SOURCE_ADDR
+cargo run -- encode 7930 --chain-id $SRC_CHAIN_ID --address $SOURCE_ADDR
 # 0x...
 export TRUSTED_SENDER=0x...
 ```
@@ -187,7 +187,7 @@ cast call -r http://localhost:3051 $MIRROR_ADDR "trustedSenderHash()(bytes32)"
 ### Retry execution (this time it should succeed)
 
 ```shell
-cargo run bundle execute \
+cargo run -- bundle execute \
   --rpc http://localhost:3051 \
   --bundle /tmp/wl.bundle.hex \
   --proof /tmp/wl.proof.json \
@@ -211,7 +211,7 @@ A very common mistake is executing against the wrong chain.
 Try (intentionally wrong):
 
 ```shell
-cargo run bundle execute \
+cargo run -- bundle execute \
   --rpc http://localhost:3050 \
   --bundle /tmp/wl.bundle.hex \
   --proof /tmp/wl.proof.json \
@@ -228,7 +228,7 @@ How to diagnose:
 inspect the bundle details:
 
 ```shell
-cargo run bundle explain --rpc http://localhost:3050 --bundle /tmp/wl.bundle.hex --proof /tmp/wl.proof.json
+cargo run -- bundle explain --rpc http://localhost:3050 --bundle /tmp/wl.bundle.hex --proof /tmp/wl.proof.json
 # ...
 # ❌ bundle.destinationChainId: bundle destination 6566 does not match current chain 6565
 # ...
