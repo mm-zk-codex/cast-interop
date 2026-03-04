@@ -70,7 +70,7 @@ pub async fn run(args: DoctorArgs, config: Config, addresses: AddressBook) -> Re
             name: "finalized_block".to_string(),
             status: "warn".to_string(),
             details: format!("finalized block not supported: {err}"),
-            hint: Some("Use a zkSync RPC or one that supports finalized blocks.".to_string()),
+            hint: Some("Use a ZKsync RPC or one that supports finalized blocks.".to_string()),
         }),
     };
 

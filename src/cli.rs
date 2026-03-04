@@ -7,14 +7,14 @@ use std::path::PathBuf;
 
 /// Entry point for the cast-interop CLI.
 ///
-/// Use this tool to build, relay, and debug zkSync interop bundles and token
+/// Use this tool to build, relay, and debug ZKsync interop bundles and token
 /// transfers without wiring RPC/ABI details every time.
 #[derive(Parser, Debug)]
 #[command(
     name = "cast-interop",
     version,
-    about = "Interop-focused cast-like CLI for zkSync",
-    long_about = "Interop-focused cast-like CLI for zkSync.\nUse it to send tokens, build bundles, and debug interop flows across chains.\nExample: cast-interop token send --chain-src era --chain-dest test --token 0xTOKEN --amount 1 --to 0xRECIPIENT --private-key $PRIVATE_KEY"
+    about = "Interop-focused cast-like CLI for ZKsync",
+    long_about = "Interop-focused cast-like CLI for ZKsync.\nUse it to send tokens, build bundles, and debug interop flows across chains.\nExample: cast-interop token send --chain-src era --chain-dest test --token 0xTOKEN --amount 1 --to 0xRECIPIENT --private-key $PRIVATE_KEY"
 )]
 pub struct Cli {
     #[arg(
@@ -146,7 +146,7 @@ pub enum DebugSubcommand {
     Root(RootWaitArgs),
     #[command(
         about = "Check RPC feature support.",
-        long_about = "Ping the RPC to detect zkSync-specific methods and finalized blocks.\nUse this to validate an RPC before running other commands.\nExample: cast-interop debug rpc --chain era"
+        long_about = "Ping the RPC to detect ZKsync-specific methods and finalized blocks.\nUse this to validate an RPC before running other commands.\nExample: cast-interop debug rpc --chain era"
     )]
     Rpc(RpcPingArgs),
     #[command(
@@ -164,6 +164,16 @@ pub enum DebugSubcommand {
         long_about = "Poll for finalization, log proof availability, root propagation, and bundle status.\nUse this to monitor relay progress over time.\nExample: cast-interop debug watch --chain-src era --chain-dest test --tx 0xTX_HASH --until executed"
     )]
     Watch(WatchArgs),
+    #[command(
+        about = "Decode raw calldata or revert data offline.",
+        long_about = "Match a raw hex blob against all known interop function and error selectors.\nWorks without any RPC connection — useful for inspecting calldata from failed transactions,\nbundle files, or revert reasons returned by eth_call.\nExample: cast-interop debug decode 0x1234abcd..."
+    )]
+    Decode(DecodeCalldataArgs),
+    #[command(
+        about = "Verify a message inclusion proof offline.",
+        long_about = "Reconstruct the L2→L1 log leaf hash and walk the Merkle tree to confirm a\nMessageInclusionProof is cryptographically valid — without spending any gas.\nOptionally checks that the root is already stored on the destination chain.\nExample: cast-interop debug proof-verify proof.json --bundle bundle.hex --dest-chain test"
+    )]
+    ProofVerify(ProofVerifyArgs),
 }
 
 impl DebugCommand {
@@ -179,6 +189,12 @@ impl DebugCommand {
             }
             DebugSubcommand::Doctor(args) => commands::doctor::run(args, config, addresses).await,
             DebugSubcommand::Watch(args) => commands::watch::run(args, config, addresses).await,
+            DebugSubcommand::Decode(args) => {
+                commands::decode_calldata::run(args, config, addresses).await
+            }
+            DebugSubcommand::ProofVerify(args) => {
+                commands::proof_verify::run(args, config, addresses).await
+            }
         }
     }
 }
@@ -414,6 +430,11 @@ pub enum ChainsSubcommand {
         long_about = "Delete a chain alias from the config file.\nUse this to clean up outdated entries.\nExample: cast-interop chains rm era"
     )]
     Rm(ChainsRemoveArgs),
+    #[command(
+        about = "Validate configured chain aliases.",
+        long_about = "For each configured chain (or a single alias), verify that the RPC is reachable,\nthe stored chainId matches what the RPC reports, and ZKsync-specific methods are supported.\nUse this to catch misconfigured chains before running relay operations.\nExample: cast-interop chains validate\nExample: cast-interop chains validate era"
+    )]
+    Validate(ChainsValidateArgs),
 }
 
 impl ChainsCommand {
@@ -426,6 +447,9 @@ impl ChainsCommand {
             ChainsSubcommand::Add(args) => commands::chains::run_add(args, config, addresses).await,
             ChainsSubcommand::Rm(args) => {
                 commands::chains::run_remove(args, config, addresses).await
+            }
+            ChainsSubcommand::Validate(args) => {
+                commands::chains::run_validate(args, config, addresses).await
             }
         }
     }
@@ -444,7 +468,11 @@ pub struct AutoRelayArgs {
     )]
     pub rpc: Vec<String>,
 
-    #[arg(long, value_name = "HEX", help = "Private key hex string. Default: unset.")]
+    #[arg(
+        long,
+        value_name = "HEX",
+        help = "Private key hex string. Default: unset."
+    )]
     pub private_key: Option<String>,
 
     #[arg(
@@ -514,6 +542,51 @@ pub struct SignerArgs {
         help = "Environment variable holding the private key. Default: PRIVATE_KEY or config signer.private_key_env."
     )]
     pub private_key_env: Option<String>,
+}
+
+/// Verify a MessageInclusionProof offline using Merkle cryptography.
+#[derive(Args, Debug)]
+pub struct ProofVerifyArgs {
+    #[arg(
+        value_name = "PROOF",
+        help = "Path to a proof JSON file or an inline proof JSON object."
+    )]
+    pub proof: String,
+
+    #[arg(
+        long,
+        value_name = "HEX_OR_PATH",
+        help = "Bundle hex (or path to a .hex file) to patch message data before verifying. \
+                Required for a correct leaf hash when using a proof from `debug proof`."
+    )]
+    pub bundle: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "ALIAS_OR_URL",
+        help = "Destination chain alias or RPC URL. When provided, also checks that \
+                interopRoots(chainId, batchNumber) is stored on that chain."
+    )]
+    pub dest_chain: Option<String>,
+
+    #[arg(long, help = "Print each step of the Merkle walk. Default: false.")]
+    pub verbose: bool,
+
+    #[arg(long, help = "Emit JSON output. Default: false.")]
+    pub json: bool,
+}
+
+/// Decode raw calldata or revert data offline against known interop selectors.
+#[derive(Args, Debug)]
+pub struct DecodeCalldataArgs {
+    #[arg(
+        value_name = "HEX",
+        help = "Raw hex-encoded calldata or revert data (with or without 0x prefix)."
+    )]
+    pub hex: String,
+
+    #[arg(long, help = "Emit JSON output. Default: false.")]
+    pub json: bool,
 }
 
 /// Decode interop events from a transaction receipt.
@@ -847,6 +920,19 @@ pub struct ChainsAddArgs {
 pub struct ChainsRemoveArgs {
     #[arg(value_name = "ALIAS", help = "Alias name to remove.")]
     pub alias: String,
+}
+
+/// Validate configured chain aliases against their live RPC endpoints.
+#[derive(Args, Debug)]
+pub struct ChainsValidateArgs {
+    #[arg(
+        value_name = "ALIAS",
+        help = "Chain alias to validate. Default: validate all configured chains."
+    )]
+    pub alias: Option<String>,
+
+    #[arg(long, help = "Emit JSON output. Default: false.")]
+    pub json: bool,
 }
 
 /// Check RPC capabilities and status.

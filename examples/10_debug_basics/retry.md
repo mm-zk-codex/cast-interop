@@ -17,7 +17,7 @@ You will learn how to:
 
 ## Prerequisites
 
-- Local zkSync OS setup with two L2s (source: 3050, destination: 3051)
+- Local ZKsync OS setup with two L2s (source: 3050, destination: 3051)
 - Contracts from `examples/03_whitelist`
 - `cast-interop` (this repo)
 - `forge` and `cast`
@@ -133,8 +133,36 @@ cargo run bundle execute \
   --bundle /tmp/wl.bundle.hex \
   --proof /tmp/wl.proof.json \
   --private-key $PRIVATE_KEY
-# Error: server returned an error response: error code 3: execution reverted: UNTRUSTED_SENDER, data:...
+# Error: server returned an error response: error code 3: execution reverted: UNTRUSTED_SENDER, data: 0x89fd2c76...
 ```
+
+The error message includes a raw hex blob after `data:`. The first 4 bytes (`0x89fd2c76`) are the ABI error selector — they identify which Solidity error was thrown. The remaining bytes are the ABI-encoded parameters.
+
+Without tooling you would have to: compute `keccak256("UnauthorizedMessageSender(address,address)")`, verify it starts with `89fd2c76`, then manually ABI-decode two `address` values from the rest. That's tedious and error-prone.
+
+Instead, decode it offline in one command — no RPC needed:
+
+```shell
+cargo run debug decode 0x89fd2c76<rest of revert hex>
+```
+
+```
+❌ kind:     error
+   name:     UnauthorizedMessageSender
+   selector: 0x89fd2c76
+   params:
+     {
+       "expected": "0x0000000000000000000000000000000000000000",
+       "actual":   "0xYourSourceContractAddress"
+     }
+```
+
+This immediately tells you:
+- Which interop error was thrown (`UnauthorizedMessageSender`)
+- What the contract expected as the trusted sender (`0x000...000` — not set yet)
+- What it actually received (`0xYourSourceContractAddress` — the source contract that sent the message)
+
+The fix is clear: call `setTrustedSender` on the mirror with the source contract's address. The `debug decode` command covers all 18 known interop error selectors — you never need to look up a selector manually again.
 
 
 ### Step 7: (optional) verify the bundle
@@ -223,9 +251,9 @@ Expected:
 
 * it should fail because destinationChainId inside the bundle won’t match block.chainid.
 
-How to diagnose:
+How to diagnose — two options:
 
-inspect the bundle details:
+1. Inspect the bundle details with `bundle explain`:
 
 ```shell
 cargo run bundle explain --rpc http://localhost:3050 --bundle /tmp/wl.bundle.hex --proof /tmp/wl.proof.json
@@ -234,7 +262,47 @@ cargo run bundle explain --rpc http://localhost:3050 --bundle /tmp/wl.bundle.hex
 # ...
 ```
 
+2. Decode the raw revert hex returned by the RPC using `debug decode` (offline, no RPC needed):
+
+```shell
+cargo run debug decode 0x4534e972<rest of revert hex>
+# ❌ kind:     error
+#    name:     WrongDestinationChainId
+#    selector: 0x4534e972
+#    params:
+#      {
+#        "bundleHash": "0x...",
+#        "expected":   "6566",
+#        "actual":     "6565"
+#      }
+```
+
 How to recover:
 
 just run the same execute command against the correct destination RPC.
+
+### Cross-checking chain configuration
+
+If you see `WrongDestinationChainId` failures when using `--chain` aliases — even though you’re pretty sure you’re targeting the right network — the problem may be in your stored config, not in the bundle.
+
+When `chains add` is run, it probes the RPC and stores the live chainId. If the network is later reconfigured (testnet reset, environment change), the stored value becomes stale. The relay flow uses this stored chainId when building proof lookups — so every bundle will target the wrong chain ID, causing failures that look like bundle problems but are actually config problems.
+
+Validate all aliases at once:
+
+```shell
+cargo run chains validate
+```
+
+This checks each alias for:
+- **RPC reachability** — is the endpoint actually responding?
+- **chainId match** — does the stored chainId match what the live RPC reports? A mismatch is the silent root cause of many `WrongDestinationChainId` failures when using `--chain` aliases
+- **ZKsync method availability** — does the RPC support `zks_getL2ToL1LogProof` and `zks_getL1BatchNumber`? A generic public RPC that doesn’t support these will fail proof fetching in ways that look like network errors rather than missing capability
+
+Fix a stale chain entry:
+
+```shell
+cargo run chains rm test
+cargo run chains add test --rpc http://localhost:3051
+cargo run chains validate test   # confirm fixed
+```
 

@@ -14,7 +14,7 @@ This is useful when:
 
 ## Prerequisites
 
-- Local zkSync OS setup with two L2s
+- Local ZKsync OS setup with two L2s
 - The `Greeting` contract from `examples/01_greeting`
 - `cast-interop` (this repo)
 - `forge` and `cast`
@@ -97,6 +97,28 @@ cargo run bundle extract \
 
 This file contains the ABI-encoded InteropBundle that will later be executed on the destination chain.
 
+You can inspect the bundle contents offline at any time — no RPC needed:
+
+```shell
+cargo run debug decode $(cat /tmp/bundle.hex)
+```
+
+This decodes the raw hex against all known interop types and shows the decoded fields:
+
+```
+📦 kind:     bundle_struct
+   name:     InteropBundle
+   selector:
+   params:
+     {
+       "version": "0x01",
+       "sourceChainId": "6565",
+       "destinationChainId": "6566",
+       "calls": [ ... ],
+       ...
+     }
+```
+
 ## Step 5: Fetch and store the inclusion proof
 Before execution, we need the message inclusion proof. It will be available only once your transaction is finalized (on local machine should happen within couple seconds).
 
@@ -112,6 +134,61 @@ export BATCH_NUMBER=55
 The proof is now stored on disk and can be reused later.
 
 Remember the batch number - this is the source chain batch number, that your transaction was included in.
+
+## Step 5b: Verify the proof offline before spending gas
+
+You now have `proof.json` on disk. Before proceeding to execute on the destination chain,
+confirm the proof is cryptographically valid. This matters because:
+
+- If the proof is **mathematically wrong** (wrong tx hash, wrong msg_index, corrupted nodes),
+  you'll learn that now — for free — rather than after spending gas on a failed `bundle execute`.
+- If the root **hasn't propagated yet**, this tells you to wait. Without this check, you'd get a
+  confusing `MessageNotIncluded` revert from `bundle execute` and not know whether to wait or
+  refetch the proof.
+
+The check is pure offline cryptography — no signing, no gas, no chain state required (though
+`--dest-chain` does a live root presence check):
+
+```shell
+cargo run debug proof-verify /tmp/proof.json \
+  --bundle /tmp/bundle.hex \
+  --dest-chain http://localhost:3051
+```
+
+What this does:
+1. Reconstructs the L2→L1 log leaf hash from the proof's message fields (tx number, sender, data)
+2. Walks the Merkle tree using the proof nodes
+3. Compares the computed root to `proof.root` (the value returned by the ZKsync RPC)
+4. With `--dest-chain`: also calls `interopRoots(chainId, batchNumber)` to confirm the root is stored on the destination chain
+
+Expected output when the proof is valid and the root is already on-chain:
+
+```
+source chain:  6565
+batch:         55
+leaf index:    3
+proof format:  legacy (plain path) (17 node(s))
+leaf hash:     0x3a8f...c291
+
+✅ computed root:  0xd4e7...b012
+✅ proof.root:     0xd4e7...b012
+✅ interopRoots(6565, 55) on 'http://localhost:3051': 0xd4e7...b012
+
+✅ VALID — proof is cryptographically correct and interopRoots(6565, 55) is confirmed on dest chain; safe to call bundle verify/execute.
+```
+
+If the root is not yet on-chain, the verdict says `NOT YET READY` (not `INVALID`) — you know
+to wait for step 6 without questioning whether your proof is correct.
+
+If you ever get `INVALID`, the proof itself has bad data. Check that you used the right tx hash
+and `--msg-index`, and re-fetch the proof.
+
+Use `--verbose` to print every Merkle step — useful when you need to see exactly which level of
+the tree produces an unexpected hash:
+
+```shell
+cargo run debug proof-verify /tmp/proof.json --bundle /tmp/bundle.hex --verbose
+```
 
 ## Step 6: Wait for the interop root on the destination chain
 The destination chain must first receive the interop root.

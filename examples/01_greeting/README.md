@@ -7,7 +7,7 @@ we'll deploy a simple contract to the destination chain, and then send a message
 ### Deploying contract on destination chain (3051)
 
 ```shell
-# Example rich account from zksync os local networks.
+# Example rich account from ZKsync os local networks.
 export PRIVATE_KEY=0xac1e735be8536c6534bb4f17f06f6afc73b2b5ba84ac2cfb12f7461b20c0bbe3
 
 forge create examples/01_greeting/Greeting.sol:Greeting -r http://localhost:3051 --private-key $PRIVATE_KEY --broadcast
