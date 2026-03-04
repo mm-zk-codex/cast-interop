@@ -71,6 +71,7 @@ pub struct SignerConfig {
 pub struct ResolvedRpc {
     pub url: String,
     pub alias: Option<String>,
+    #[allow(dead_code)]
     pub chain_id: Option<u64>,
     /// Set when the chain requires Prividium authentication.
     pub prividium_url: Option<String>,

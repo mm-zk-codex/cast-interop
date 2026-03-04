@@ -8,6 +8,7 @@ use crate::config::Config;
 use crate::relay_flow::{build_message_proof, wait_for_proof, wait_for_root};
 use crate::rpc::{eth_call, get_transaction_receipt};
 use crate::signer::{load_signer, SignerOptions};
+use crate::store;
 use crate::types::{
     format_hex, require_signer_or_dry_run, AddressBook, MessageInclusionProof, RelaySummary,
 };
@@ -163,6 +164,15 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
 
     if let Some(dir) = args.out_dir {
         write_relay_outputs(dir, &encoded_bundle, &proof, &summary).await?;
+    }
+
+    // Persist relay record for `cast-interop serve` unless --no-store is set.
+    if !args.no_store {
+        let store_path = args.store_path.unwrap_or_else(store::default_store_path);
+        if let Err(e) = store::record_relay(&store_path, &summary, &args.mode).await {
+            // Non-fatal: warn but don't fail the relay itself.
+            tracing::warn!("failed to save relay record to store: {e}");
+        }
     }
 
     Ok(())

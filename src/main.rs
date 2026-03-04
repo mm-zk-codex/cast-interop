@@ -7,6 +7,7 @@ mod prividium;
 mod relay_flow;
 mod rpc;
 mod signer;
+mod store;
 mod types;
 
 use anyhow::Result;
