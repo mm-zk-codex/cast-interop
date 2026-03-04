@@ -196,6 +196,33 @@ pub async fn eth_call_with_value(
     Ok(result)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_with_auth_builds_client_without_network() {
+        // Should succeed without any network connection — only client construction.
+        let client = RpcClient::new_with_auth("https://rpc.example.com", "test-bearer-token");
+        assert!(client.is_ok(), "should build auth client: {:?}", client.err());
+        let client = client.unwrap();
+        assert_eq!(client.url, "https://rpc.example.com");
+    }
+
+    #[test]
+    fn new_with_auth_invalid_url_returns_error() {
+        let result = RpcClient::new_with_auth("not a valid url at all", "token");
+        assert!(result.is_err(), "expected error for invalid URL");
+    }
+
+    #[test]
+    fn new_with_auth_bad_bearer_token_characters_errors() {
+        // Bearer token with newline is invalid as an HTTP header value
+        let result = RpcClient::new_with_auth("https://rpc.example.com", "bad\ntoken");
+        assert!(result.is_err(), "expected error for invalid token with newline");
+    }
+}
+
 /*
 pub async fn estimate_gas(
     client: &RpcClient,

@@ -159,3 +159,68 @@ pub fn resolve_private_key(explicit: Option<&str>, env_name: Option<&str>) -> Re
         anyhow!("Prividium private key not set — set the {env} environment variable")
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicit_key_takes_priority() {
+        let key = "0xdeadbeef";
+        let result = resolve_private_key(Some(key), Some("SOME_ENV_VAR")).unwrap();
+        assert_eq!(result, key);
+    }
+
+    #[test]
+    fn resolve_key_from_named_env_var() {
+        std::env::set_var("TEST_PRIV_KEY_ABC123", "0x1234abcd");
+        let result = resolve_private_key(None, Some("TEST_PRIV_KEY_ABC123")).unwrap();
+        assert_eq!(result, "0x1234abcd");
+        std::env::remove_var("TEST_PRIV_KEY_ABC123");
+    }
+
+    #[test]
+    fn resolve_key_from_default_env_var() {
+        // Temporarily set the default env var
+        std::env::set_var("PRIVIDIUM_PRIVATE_KEY", "0xabcdef");
+        let result = resolve_private_key(None, None).unwrap();
+        assert_eq!(result, "0xabcdef");
+        std::env::remove_var("PRIVIDIUM_PRIVATE_KEY");
+    }
+
+    #[test]
+    fn missing_env_var_returns_error() {
+        std::env::remove_var("PRIVIDIUM_PRIVATE_KEY_MISSING_XYZ");
+        let err = resolve_private_key(None, Some("PRIVIDIUM_PRIVATE_KEY_MISSING_XYZ"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("PRIVIDIUM_PRIVATE_KEY_MISSING_XYZ"), "got: {err}");
+        assert!(err.contains("not set"), "got: {err}");
+    }
+
+    #[test]
+    fn missing_default_env_var_mentions_prividium_private_key() {
+        std::env::remove_var("PRIVIDIUM_PRIVATE_KEY");
+        let err = resolve_private_key(None, None).unwrap_err().to_string();
+        assert!(err.contains("PRIVIDIUM_PRIVATE_KEY"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn sign_message_produces_0x_prefixed_hex() {
+        // Known test private key (not used for anything real)
+        let private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+        let signer: PrivateKeySigner = private_key.parse().unwrap();
+        let result = sign_message(&signer, "hello world").await.unwrap();
+        assert!(result.starts_with("0x"), "signature should be 0x-prefixed, got: {result}");
+        // EIP-191 signature is 65 bytes = 130 hex chars + "0x" prefix
+        assert_eq!(result.len(), 132, "signature should be 132 chars (0x + 130 hex), got: {result}");
+    }
+
+    #[test]
+    fn invalid_private_key_returns_parse_error() {
+        // authenticate() itself does network I/O, but we can test key parsing
+        let bad_key = "not_a_hex_key";
+        let result: std::result::Result<PrivateKeySigner, _> = bad_key.parse();
+        assert!(result.is_err());
+    }
+}

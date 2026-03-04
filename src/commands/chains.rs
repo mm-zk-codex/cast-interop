@@ -191,3 +191,49 @@ fn redact_url(value: &str) -> String {
         Err(_) => value.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redact_plain_url_unchanged() {
+        // url::Url::parse normalizes by adding a trailing slash to bare host URLs,
+        // so we compare with the normalized form.
+        let url = "https://mainnet.era.zksync.io";
+        let redacted = redact_url(url);
+        assert!(!redacted.contains("REDACTED"), "plain URL should not be redacted, got: {redacted}");
+        assert!(redacted.starts_with("https://mainnet.era.zksync.io"), "got: {redacted}");
+    }
+
+    #[test]
+    fn redact_url_with_user_and_password() {
+        let url = "https://user:secret@rpc.example.com/endpoint";
+        let redacted = redact_url(url);
+        assert!(!redacted.contains("secret"), "password should be redacted, got: {redacted}");
+        assert!(!redacted.contains("user"), "username should be redacted, got: {redacted}");
+        assert!(redacted.contains("REDACTED"), "should contain REDACTED, got: {redacted}");
+    }
+
+    #[test]
+    fn redact_url_with_user_only() {
+        let url = "https://apikey@rpc.example.com";
+        let redacted = redact_url(url);
+        assert!(!redacted.contains("apikey"), "should not contain apikey, got: {redacted}");
+        assert!(redacted.contains("REDACTED"), "should contain REDACTED, got: {redacted}");
+    }
+
+    #[test]
+    fn redact_url_with_api_key_in_path() {
+        // API key in path (not credentials) should NOT be redacted — only auth fields
+        let url = "https://rpc.example.com/v1/abc123secretkey";
+        let redacted = redact_url(url);
+        assert_eq!(redacted, url);
+    }
+
+    #[test]
+    fn redact_invalid_url_passes_through() {
+        let not_a_url = "not-a-url-at-all";
+        assert_eq!(redact_url(not_a_url), not_a_url);
+    }
+}

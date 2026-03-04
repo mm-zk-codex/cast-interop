@@ -257,3 +257,197 @@ fn default_config_path() -> PathBuf {
     }
     PathBuf::from("./config.toml")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_chain(rpc: &str, chain_id: Option<u64>) -> ChainConfig {
+        ChainConfig {
+            rpc: rpc.to_string(),
+            chain_id,
+            prividium_url: None,
+            prividium_key_env: None,
+        }
+    }
+
+    fn make_prividium_chain(rpc: &str, chain_id: u64, priv_url: &str, key_env: &str) -> ChainConfig {
+        ChainConfig {
+            rpc: rpc.to_string(),
+            chain_id: Some(chain_id),
+            prividium_url: Some(priv_url.to_string()),
+            prividium_key_env: Some(key_env.to_string()),
+        }
+    }
+
+    // --- set_chain / remove_chain / chain ---
+
+    #[test]
+    fn set_and_retrieve_chain() {
+        let mut config = Config::default();
+        config.set_chain("era".to_string(), make_chain("https://mainnet.era.zksync.io", Some(324)));
+        let chain = config.chain("era").expect("chain should exist");
+        assert_eq!(chain.rpc, "https://mainnet.era.zksync.io");
+        assert_eq!(chain.chain_id, Some(324));
+    }
+
+    #[test]
+    fn set_chain_overwrites_existing() {
+        let mut config = Config::default();
+        config.set_chain("era".to_string(), make_chain("https://old.url", Some(1)));
+        config.set_chain("era".to_string(), make_chain("https://new.url", Some(324)));
+        assert_eq!(config.chain("era").unwrap().rpc, "https://new.url");
+    }
+
+    #[test]
+    fn remove_chain_returns_true_when_present() {
+        let mut config = Config::default();
+        config.set_chain("era".to_string(), make_chain("https://mainnet.era.zksync.io", Some(324)));
+        assert!(config.remove_chain("era"));
+        assert!(config.chain("era").is_none());
+    }
+
+    #[test]
+    fn remove_chain_returns_false_when_absent() {
+        let mut config = Config::default();
+        assert!(!config.remove_chain("nonexistent"));
+    }
+
+    #[test]
+    fn chain_returns_none_for_missing_alias() {
+        let config = Config::default();
+        assert!(config.chain("missing").is_none());
+    }
+
+    // --- resolve_rpc ---
+
+    #[test]
+    fn resolve_rpc_with_explicit_url() {
+        let config = Config::default();
+        let resolved = config.resolve_rpc(Some("https://custom.rpc"), None).unwrap();
+        assert_eq!(resolved.url, "https://custom.rpc");
+        assert!(resolved.prividium_url.is_none());
+    }
+
+    #[test]
+    fn resolve_rpc_with_chain_alias() {
+        let mut config = Config::default();
+        config.set_chain("era".to_string(), make_chain("https://mainnet.era.zksync.io", Some(324)));
+        let resolved = config.resolve_rpc(None, Some("era")).unwrap();
+        assert_eq!(resolved.url, "https://mainnet.era.zksync.io");
+        assert_eq!(resolved.chain_id, Some(324));
+        assert_eq!(resolved.alias.as_deref(), Some("era"));
+    }
+
+    #[test]
+    fn resolve_rpc_prividium_chain_propagates_auth_fields() {
+        let mut config = Config::default();
+        config.set_chain(
+            "mychain".to_string(),
+            make_prividium_chain(
+                "https://priv.rpc/rpc",
+                270,
+                "https://permissions.example.com",
+                "MY_KEY_ENV",
+            ),
+        );
+        let resolved = config.resolve_rpc(None, Some("mychain")).unwrap();
+        assert_eq!(resolved.url, "https://priv.rpc/rpc");
+        assert_eq!(resolved.prividium_url.as_deref(), Some("https://permissions.example.com"));
+        assert_eq!(resolved.prividium_key_env.as_deref(), Some("MY_KEY_ENV"));
+    }
+
+    #[test]
+    fn resolve_rpc_both_rpc_and_chain_errors() {
+        let config = Config::default();
+        let err = config
+            .resolve_rpc(Some("https://custom.rpc"), Some("era"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("cannot set both"), "got: {err}");
+    }
+
+    #[test]
+    fn resolve_rpc_unknown_alias_errors() {
+        let config = Config::default();
+        let err = config.resolve_rpc(None, Some("unknown")).unwrap_err().to_string();
+        assert!(err.contains("unknown chain alias"), "got: {err}");
+    }
+
+    #[test]
+    fn resolve_rpc_uses_default_alias_when_no_args() {
+        let mut config = Config::default();
+        config.set_chain("default".to_string(), make_chain("https://default.rpc", Some(1)));
+        let resolved = config.resolve_rpc(None, None).unwrap();
+        assert_eq!(resolved.url, "https://default.rpc");
+    }
+
+    #[test]
+    fn resolve_rpc_uses_sole_chain_when_no_args() {
+        let mut config = Config::default();
+        config.set_chain("era".to_string(), make_chain("https://mainnet.era.zksync.io", Some(324)));
+        let resolved = config.resolve_rpc(None, None).unwrap();
+        assert_eq!(resolved.url, "https://mainnet.era.zksync.io");
+    }
+
+    #[test]
+    fn resolve_rpc_no_config_errors() {
+        let config = Config::default();
+        let err = config.resolve_rpc(None, None).unwrap_err().to_string();
+        assert!(err.contains("no rpc configured"), "got: {err}");
+    }
+
+    // --- resolve_chain_id ---
+
+    #[test]
+    fn resolve_chain_id_from_alias() {
+        let mut config = Config::default();
+        config.set_chain("era".to_string(), make_chain("https://mainnet.era.zksync.io", Some(324)));
+        let id = config.resolve_chain_id("era").unwrap();
+        assert_eq!(id, alloy_primitives::U256::from(324u64));
+    }
+
+    #[test]
+    fn resolve_chain_id_alias_missing_chain_id_errors() {
+        let mut config = Config::default();
+        config.set_chain("era".to_string(), make_chain("https://mainnet.era.zksync.io", None));
+        let err = config.resolve_chain_id("era").unwrap_err().to_string();
+        assert!(err.contains("chainId missing"), "got: {err}");
+    }
+
+    #[test]
+    fn resolve_chain_id_from_numeric_string() {
+        let config = Config::default();
+        let id = config.resolve_chain_id("324").unwrap();
+        assert_eq!(id, alloy_primitives::U256::from(324u64));
+    }
+
+    // --- ChainConfig serialization (TOML round-trip) ---
+
+    #[test]
+    fn chain_config_toml_round_trip_without_prividium() {
+        let cfg = make_chain("https://mainnet.era.zksync.io", Some(324));
+        let toml_str = toml::to_string_pretty(&cfg).unwrap();
+        // prividium fields should not appear when None
+        assert!(!toml_str.contains("prividium"), "got: {toml_str}");
+        let parsed: ChainConfig = toml::from_str(&toml_str).unwrap();
+        assert_eq!(parsed.rpc, cfg.rpc);
+        assert_eq!(parsed.chain_id, cfg.chain_id);
+    }
+
+    #[test]
+    fn chain_config_toml_round_trip_with_prividium() {
+        let cfg = make_prividium_chain(
+            "https://priv.rpc/rpc",
+            270,
+            "https://permissions.example.com",
+            "PRIV_KEY_ENV",
+        );
+        let toml_str = toml::to_string_pretty(&cfg).unwrap();
+        assert!(toml_str.contains("prividium_url"), "got: {toml_str}");
+        assert!(toml_str.contains("prividium_key_env"), "got: {toml_str}");
+        let parsed: ChainConfig = toml::from_str(&toml_str).unwrap();
+        assert_eq!(parsed.prividium_url.as_deref(), Some("https://permissions.example.com"));
+        assert_eq!(parsed.prividium_key_env.as_deref(), Some("PRIV_KEY_ENV"));
+    }
+}
