@@ -35,7 +35,7 @@ cast call -r http://localhost:3050 $TOKEN_ADDRESS 'balanceOf(address)(uint256)' 
 You can register your token within the system, getting automatic bridge contracts deployments on every L2 chain in the ecosystem.
 
 ```shell
-cargo run token info --token $TOKEN_ADDRESS --rpc-src http://localhost:3050 --rpc-dest http://localhost:3051
+cargo run -- token info --token $TOKEN_ADDRESS --rpc-src http://localhost:3050 --rpc-dest http://localhost:3051
 
 #
 #source chainId: 6565
@@ -53,7 +53,7 @@ We can do the registration, by simply sending one unit of token over.
 Let's send 3 units of token to the other chain.
 
 ```shell
-cargo run token send --token $TOKEN_ADDRESS --to $ADDRESS --rpc-src http://localhost:3050   --rpc-dest http://localhost:3051 --private-key $PRIVATE_KEY --amount-wei 3
+cargo run -- token send --token $TOKEN_ADDRESS --to $ADDRESS --rpc-src http://localhost:3050   --rpc-dest http://localhost:3051 --private-key $PRIVATE_KEY --amount-wei 3
 
 # ... lots of logs
 # Waiting for finalized block on source...
@@ -65,7 +65,7 @@ cargo run token send --token $TOKEN_ADDRESS --to $ADDRESS --rpc-src http://local
 Let's see the token info:
 
 ```shell
-cargo run token info --token $TOKEN_ADDRESS --rpc-src http://localhost:3050 --rpc-dest http://localhost:3051
+cargo run -- token info --token $TOKEN_ADDRESS --rpc-src http://localhost:3050 --rpc-dest http://localhost:3051
 
 # ...
 # wrapped token (dest): 0x989bd5661de9a733db8599e9307625ee910768b1
@@ -80,7 +80,7 @@ And now you can see that the 'destination' wrapped token contract was succesfull
 There are 2 ways how you can check the balance: 'token balance' or simply doing a cast call for 'balanceOf'
 
 ```shell
-cargo run token balance --token $TOKEN_ADDRESS --to $ADDRESS --rpc-src http://localhost:3050   --rpc-dest http://localhost:3051
+cargo run -- token balance --token $TOKEN_ADDRESS --to $ADDRESS --rpc-src http://localhost:3050   --rpc-dest http://localhost:3051
 # wrapped token (dest): 0x989bd5661de9a733db8599e9307625ee910768b1
 # balance: 0.000000000000000003
 # balance (raw): 3

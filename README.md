@@ -57,6 +57,26 @@ Binary path:
 ./target/release/cast-interop --help
 ```
 
+## Prerequisites for local examples
+
+The example docs in `examples/` assume:
+
+* You run commands from the repository root.
+* You have Foundry tools installed (`forge`, `cast`).
+* You have a local zkSync OS environment with at least two chains (commonly `http://localhost:3050` and `http://localhost:3051`).
+
+If you use source execution, pass CLI args through Cargo with `--`:
+
+```bash
+cargo run -- --help
+```
+
+If you use the compiled binary, commands are:
+
+```bash
+./target/release/cast-interop --help
+```
+
 ## Configuration
 
 Config file location:
