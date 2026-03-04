@@ -136,7 +136,7 @@ async fn run_bundle_action(
 }
 
 /// Load a hex string or read hex contents from a file path.
-fn load_hex_or_path(value: &str) -> Result<Vec<u8>> {
+pub fn load_hex_or_path(value: &str) -> Result<Vec<u8>> {
     if Path::new(value).exists() {
         let contents = fs::read_to_string(value)?;
         return decode_hex(&contents);
