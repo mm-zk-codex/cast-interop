@@ -169,6 +169,11 @@ pub enum DebugSubcommand {
         long_about = "Match a raw hex blob against all known interop function and error selectors.\nWorks without any RPC connection — useful for inspecting calldata from failed transactions,\nbundle files, or revert reasons returned by eth_call.\nExample: cast-interop debug decode 0x1234abcd..."
     )]
     Decode(DecodeCalldataArgs),
+    #[command(
+        about = "Verify a message inclusion proof offline.",
+        long_about = "Reconstruct the L2→L1 log leaf hash and walk the Merkle tree to confirm a\nMessageInclusionProof is cryptographically valid — without spending any gas.\nOptionally checks that the root is already stored on the destination chain.\nExample: cast-interop debug proof-verify proof.json --bundle bundle.hex --dest-chain test"
+    )]
+    ProofVerify(ProofVerifyArgs),
 }
 
 impl DebugCommand {
@@ -186,6 +191,9 @@ impl DebugCommand {
             DebugSubcommand::Watch(args) => commands::watch::run(args, config, addresses).await,
             DebugSubcommand::Decode(args) => {
                 commands::decode_calldata::run(args, config, addresses).await
+            }
+            DebugSubcommand::ProofVerify(args) => {
+                commands::proof_verify::run(args, config, addresses).await
             }
         }
     }
@@ -534,6 +542,38 @@ pub struct SignerArgs {
         help = "Environment variable holding the private key. Default: PRIVATE_KEY or config signer.private_key_env."
     )]
     pub private_key_env: Option<String>,
+}
+
+/// Verify a MessageInclusionProof offline using Merkle cryptography.
+#[derive(Args, Debug)]
+pub struct ProofVerifyArgs {
+    #[arg(
+        value_name = "PROOF",
+        help = "Path to a proof JSON file or an inline proof JSON object."
+    )]
+    pub proof: String,
+
+    #[arg(
+        long,
+        value_name = "HEX_OR_PATH",
+        help = "Bundle hex (or path to a .hex file) to patch message data before verifying. \
+                Required for a correct leaf hash when using a proof from `debug proof`."
+    )]
+    pub bundle: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "ALIAS_OR_URL",
+        help = "Destination chain alias or RPC URL. When provided, also checks that \
+                interopRoots(chainId, batchNumber) is stored on that chain."
+    )]
+    pub dest_chain: Option<String>,
+
+    #[arg(long, help = "Print each step of the Merkle walk. Default: false.")]
+    pub verbose: bool,
+
+    #[arg(long, help = "Emit JSON output. Default: false.")]
+    pub json: bool,
 }
 
 /// Decode raw calldata or revert data offline against known interop selectors.

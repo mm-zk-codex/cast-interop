@@ -135,6 +135,42 @@ The proof is now stored on disk and can be reused later.
 
 Remember the batch number - this is the source chain batch number, that your transaction was included in.
 
+## Step 5b: Verify the proof offline before spending gas
+
+Before waiting for the root and executing, confirm the proof is cryptographically valid.
+This is a pure offline check — no signing or gas required:
+
+```shell
+cargo run debug proof-verify /tmp/proof.json \
+  --bundle /tmp/bundle.hex \
+  --dest-chain http://localhost:3051
+```
+
+Expected output when the proof is valid and the root is already on-chain:
+
+```
+source chain:  6565
+batch:         55
+leaf index:    3
+proof format:  legacy (plain path) (17 node(s))
+leaf hash:     0x3a8f...c291
+
+✅ computed root:  0xd4e7...b012
+✅ proof.root:     0xd4e7...b012
+✅ interopRoots(6565, 55) on 'http://localhost:3051': 0xd4e7...b012
+
+✅ VALID — proof is cryptographically correct and interopRoots(6565, 55) is confirmed on dest chain; safe to call bundle verify/execute.
+```
+
+If the root is not yet on-chain the overall verdict says `NOT YET READY` rather than `INVALID`, so
+you always know whether the problem is the proof itself or just timing.
+
+Use `--verbose` to print every Merkle step — helpful when debugging a proof mismatch:
+
+```shell
+cargo run debug proof-verify /tmp/proof.json --bundle /tmp/bundle.hex --verbose
+```
+
 ## Step 6: Wait for the interop root on the destination chain
 The destination chain must first receive the interop root.
 

@@ -14,7 +14,7 @@ cargo build --release          # release build
 cargo run -- --help            # run via cargo
 cargo clippy                   # lint
 cargo fmt --check              # format check
-cargo test                     # run unit tests (17 tests in src/abi.rs covering decode_calldata_bytes)
+cargo test                     # run unit tests (25 tests in src/abi.rs covering decode_calldata_bytes and proof verification)
 ```
 
 The binary is `cast-interop` (defined in `Cargo.toml` as `[[bin]]`).
@@ -33,7 +33,7 @@ This is a single Rust crate with no workspace. All code lives under `src/`.
 - **`rpc.rs`** — `RpcClient` wrapping an alloy `DynProvider` + reqwest `Client`. Provides helpers for `eth_call`, `raw_rpc` (JSON-RPC calls), log proof fetching, and finalization polling.
 - **`signer.rs`** — Loads a `PrivateKeySigner` from `--private-key` flag, `--private-key-env` env var, or config.
 - **`types.rs`** — Shared types (`AddressBook`, view structs for JSON output, Solidity struct definitions via `alloy_sol_types::sol!` for `InteropBundle`, `InteropCall`, `BundleAttributes`). Also defines default system contract addresses.
-- **`abi.rs`** — ABI encoding/decoding helpers. Encodes contract calls (`verifyBundle`, `executeBundle`, `sendMessage`, `sendBundle`, `bundleStatus`, `interopRoots`) and decodes event data (`InteropBundleSent`, `MessageSent`). Contains the interop error selector map for revert decoding.
+- **`abi.rs`** — ABI encoding/decoding helpers. Encodes contract calls (`verifyBundle`, `executeBundle`, `sendMessage`, `sendBundle`, `bundleStatus`, `interopRoots`) and decodes event data (`InteropBundleSent`, `MessageSent`). Contains the interop error selector map for revert decoding. Also implements `compute_leaf_hash`, `compute_merkle_root`, and `verify_proof_offline` for pure offline Merkle proof verification.
 - **`encode.rs`** — ERC-7930 address encoding/decoding and interop attribute encoding (call value, indirect call, execution address, unbundler address, asset ID).
 - **`relay_flow.rs`** — Core relay orchestration: `wait_for_root`, `wait_for_proof`, `build_message_proof`, `execute_bundle`. Coordinates the proof→root→execute pipeline.
 - **`commands/`** — One file per CLI subcommand. Each exports a `run()` function taking clap args, `Config`, and `AddressBook`.

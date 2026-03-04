@@ -8,6 +8,7 @@ pub mod doctor;
 pub mod encode;
 pub mod explain;
 pub mod proof;
+pub mod proof_verify;
 pub mod relay;
 pub mod root_wait;
 pub mod rpc_ping;

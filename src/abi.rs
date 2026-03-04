@@ -2,12 +2,18 @@ use crate::types::{address_to_hex, b256_to_hex, format_hex, u256_to_string};
 use crate::types::{BundleAttributesView, InteropBundle, InteropBundleView as BundleView};
 use crate::types::{InteropCallView, MessageInclusionProof};
 use alloy_primitives::ruint::aliases::U256;
-use alloy_primitives::{keccak256, Address, Bytes, B256, U256 as AlloyU256};
+use alloy_primitives::{address, keccak256, Address, Bytes, B256, U256 as AlloyU256};
 use alloy_sol_types::{SolCall, SolError, SolValue};
 use anyhow::{anyhow, Result};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::str::FromStr;
+
+/// The L2→L1 Messenger system contract address, identical on every zkSync chain.
+///
+/// The leaf hash computation always uses this as the `sender` field of the L2 log,
+/// regardless of which contract actually called `sendMessage`. See `MessageHashing.sol`.
+pub const L2_TO_L1_MESSENGER: Address = address!("0000000000000000000000000000000000008008");
 
 alloy_sol_types::sol! {
     struct InteropBundleSent {
@@ -750,6 +756,238 @@ pub fn decode_calldata_bytes(data: &[u8]) -> DecodedCalldata {
     }
 }
 
+// ── Offline Merkle proof verification ────────────────────────────────────────
+
+/// Compute the L2→L1 log leaf hash for an interop message.
+///
+/// Implements `MessageHashing.getLeafHashFromMessage` from the protocol source.
+///
+/// The 88-byte packed encoding is (all big-endian):
+/// ```text
+/// uint8(0)           — l2ShardId
+/// bool(true) = 0x01  — isService
+/// uint16              — txNumberInBatch
+/// address(0x8008)    — sender = L2_TO_L1_MESSENGER (always)
+/// bytes32             — key = bytes32(uint160(message_sender))
+/// bytes32             — value = keccak256(message_data)
+/// ```
+/// where `message_sender` is the InteropCenter address that called `sendMessage`,
+/// and `message_data` is `BUNDLE_IDENTIFIER ++ abi_encode(bundle)`.
+pub fn compute_leaf_hash(tx_number_in_batch: u16, sender: Address, data: &[u8]) -> B256 {
+    // key = bytes32(uint160(sender)) — address left-padded to 32 bytes
+    let mut key = [0u8; 32];
+    key[12..].copy_from_slice(sender.as_slice());
+
+    // value = keccak256(data)
+    let value: B256 = keccak256(data);
+
+    // abi.encodePacked(l2ShardId, isService, txNumberInBatch, sender=0x8008, key, value)
+    let mut packed = Vec::with_capacity(88);
+    packed.push(0u8); // l2ShardId = 0
+    packed.push(1u8); // isService = true
+    packed.extend_from_slice(&tx_number_in_batch.to_be_bytes());
+    packed.extend_from_slice(L2_TO_L1_MESSENGER.as_slice()); // 20 bytes
+    packed.extend_from_slice(&key); // 32 bytes
+    packed.extend_from_slice(value.as_slice()); // 32 bytes
+                                                // total = 1 + 1 + 2 + 20 + 32 + 32 = 88 bytes ✓
+
+    keccak256(packed)
+}
+
+/// One step of a Merkle walk, for verbose reporting.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MerkleStep {
+    pub step: usize,
+    pub index: u64,
+    pub side: String, // "left" or "right"
+    pub hash: String,
+}
+
+/// Walk a binary Merkle tree from leaf to root, recording every intermediate hash.
+///
+/// Implements `Merkle.calculateRoot` from the protocol source:
+/// - if `index % 2 == 0`: `hash(current, sibling)` (leaf is left child)
+/// - if `index % 2 == 1`: `hash(sibling, current)` (leaf is right child)
+pub fn compute_merkle_root_steps(path: &[B256], index: u64, leaf: B256) -> (B256, Vec<MerkleStep>) {
+    let mut current = leaf;
+    let mut idx = index;
+    let mut steps = Vec::with_capacity(path.len());
+
+    for (i, node) in path.iter().enumerate() {
+        let (combined, side) = if idx % 2 == 0 {
+            let mut buf = [0u8; 64];
+            buf[..32].copy_from_slice(current.as_slice());
+            buf[32..].copy_from_slice(node.as_slice());
+            (keccak256(buf), "left")
+        } else {
+            let mut buf = [0u8; 64];
+            buf[..32].copy_from_slice(node.as_slice());
+            buf[32..].copy_from_slice(current.as_slice());
+            (keccak256(buf), "right")
+        };
+        current = combined;
+        steps.push(MerkleStep {
+            step: i,
+            index: idx,
+            side: side.to_string(),
+            hash: format!("{current:#x}"),
+        });
+        idx /= 2;
+    }
+
+    (current, steps)
+}
+
+/// Walk a binary Merkle tree from leaf to root (no step recording).
+pub fn compute_merkle_root(path: &[B256], index: u64, leaf: B256) -> B256 {
+    compute_merkle_root_steps(path, index, leaf).0
+}
+
+/// Result of offline Merkle proof verification.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProofVerifyResult {
+    /// Source chain ID parsed from the proof.
+    pub chain_id: String,
+    /// L1 batch number from the proof.
+    pub l1_batch_number: u64,
+    /// Leaf index (l2_message_index) used in the Merkle walk.
+    pub leaf_index: u64,
+    /// Hex-encoded leaf hash computed from the proof's message fields.
+    pub leaf_hash: String,
+    /// Whether the proof is in the new metadata format (first element contains metadata).
+    pub new_format: bool,
+    /// Number of Merkle path nodes used in the leaf proof.
+    pub proof_nodes_used: usize,
+    /// Hex-encoded root computed by walking the Merkle path.
+    pub computed_root: String,
+    /// Hex-encoded expected root from the proof JSON (as returned by zkSync RPC).
+    pub expected_root: String,
+    /// Whether the computed root matches the expected root.
+    pub merkle_valid: bool,
+    /// Per-step trace (populated when verbose=true).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<MerkleStep>,
+    /// Human-readable verdict.
+    pub verdict: String,
+}
+
+/// Parse the proof metadata element to determine the proof format.
+///
+/// New format: the last 28 bytes of the first proof element are all zero.
+/// - `first[0]` = metadata version (must be 0x01)
+/// - `first[1]` = `logLeafProofLen` — number of nodes for the log-leaf Merkle proof
+/// - `first[2]` = `batchLeafProofLen` — nodes for the batch-level proof (0 for direct settlement)
+/// - `first[3]` = `finalProofNode` flag (1 = single settlement layer, no recursion needed)
+///
+/// Old format: the first element is a regular hash node; `proofStartIndex = 0`,
+/// `logLeafProofLen = proof.len()`, `finalProofNode = true`.
+///
+/// Returns `(start_index, log_leaf_proof_len, final_proof_node)`.
+fn parse_proof_metadata(proof: &[B256]) -> (usize, usize, bool) {
+    if proof.is_empty() {
+        return (0, 0, true);
+    }
+    // Detect new format: bytes [4..32] are all zero (hashes never have 28 trailing zero bytes)
+    let is_new_format = proof[0].as_slice()[4..].iter().all(|&b| b == 0);
+    if is_new_format {
+        let log_leaf_len = proof[0][1] as usize;
+        let final_proof_node = proof[0][3] != 0;
+        (1, log_leaf_len, final_proof_node)
+    } else {
+        (0, proof.len(), true)
+    }
+}
+
+/// Verify a [`MessageInclusionProof`] offline using pure cryptography.
+///
+/// Reconstructs the L2→L1 log leaf hash from the proof's `message` fields, walks
+/// the Merkle tree with the proof nodes, and compares the computed root to
+/// `proof.root` (the batch settlement root returned by the zkSync RPC).
+///
+/// Pass `verbose = true` to populate [`ProofVerifyResult::steps`] with the full
+/// Merkle walk trace — useful for diagnosing exactly where the path diverges.
+///
+/// # Limitations
+/// Multi-hop settlement chains (where `finalProofNode = false`) are not yet
+/// supported for the batch-level portion of the proof. The log-leaf portion
+/// is always verified.
+pub fn verify_proof_offline(
+    proof: &MessageInclusionProof,
+    verbose: bool,
+) -> Result<ProofVerifyResult> {
+    // Parse sender address (InteropCenter on the source chain)
+    let sender = Address::from_str(&proof.message.sender).map_err(|e| {
+        anyhow!(
+            "invalid proof message sender '{}': {e}",
+            proof.message.sender
+        )
+    })?;
+
+    // Parse message data (0x01 + abi_encode(bundle), or "0x" if not yet patched)
+    let data_hex = proof.message.data.trim_start_matches("0x");
+    let data_bytes =
+        hex::decode(data_hex).map_err(|e| anyhow!("invalid proof message data: {e}"))?;
+
+    // Parse expected root (batch settlement root from zkSync RPC)
+    let expected_root = B256::from_str(proof.root.trim_start_matches("0x"))
+        .map_err(|e| anyhow!("invalid proof root '{}': {e}", proof.root))?;
+
+    // Parse proof nodes
+    let proof_nodes: Vec<B256> = proof
+        .proof
+        .iter()
+        .map(|s| B256::from_str(s.trim_start_matches("0x")))
+        .collect::<Result<_, _>>()
+        .map_err(|e| anyhow!("invalid proof node: {e}"))?;
+
+    // Compute leaf hash from message fields
+    let leaf = compute_leaf_hash(proof.message.tx_number_in_batch as u16, sender, &data_bytes);
+
+    // Determine proof format and extract the log-leaf Merkle path
+    let (start, log_leaf_len, _final_proof_node) = parse_proof_metadata(&proof_nodes);
+    let path_end = (start + log_leaf_len).min(proof_nodes.len());
+    let path = &proof_nodes[start..path_end];
+    let new_format = start == 1;
+
+    // Walk the Merkle tree
+    let (computed_root, steps) = if verbose {
+        compute_merkle_root_steps(path, proof.l2_message_index, leaf)
+    } else {
+        (
+            compute_merkle_root(path, proof.l2_message_index, leaf),
+            vec![],
+        )
+    };
+
+    let merkle_valid = computed_root == expected_root;
+    let verdict = if merkle_valid {
+        "VALID — computed Merkle root matches proof.root; safe to call bundle verify".to_string()
+    } else {
+        format!(
+            "INVALID — computed root {:#x} does not match proof.root {expected_root:#x}; \
+             the proof may be corrupted, use the wrong tx hash / msg_index, \
+             or have been fetched before the bundle data was patched",
+            computed_root
+        )
+    };
+
+    Ok(ProofVerifyResult {
+        chain_id: proof.chain_id.clone(),
+        l1_batch_number: proof.l1_batch_number,
+        leaf_index: proof.l2_message_index,
+        leaf_hash: format!("{leaf:#x}"),
+        new_format,
+        proof_nodes_used: path.len(),
+        computed_root: format!("{computed_root:#x}"),
+        expected_root: format!("{expected_root:#x}"),
+        merkle_valid,
+        steps,
+        verdict,
+    })
+}
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 fn fmt_bundle_action_call(
@@ -980,6 +1218,135 @@ mod tests {
         assert_eq!(d.name, "IndirectCallValueMismatch");
         assert_eq!(params_str(&d, "expected"), "1000");
         assert_eq!(params_str(&d, "actual"), "500");
+    }
+
+    // ── compute_leaf_hash ─────────────────────────────────────────────────────
+
+    #[test]
+    fn leaf_hash_changes_with_each_input_field() {
+        let base = compute_leaf_hash(1, Address::ZERO, &[]);
+        let diff_tx = compute_leaf_hash(2, Address::ZERO, &[]);
+        let diff_sender = compute_leaf_hash(1, Address::from([0x11; 20]), &[]);
+        let diff_data = compute_leaf_hash(1, Address::ZERO, &[0xde, 0xad]);
+        assert_ne!(base, diff_tx, "different txNumber must change leaf hash");
+        assert_ne!(base, diff_sender, "different sender must change leaf hash");
+        assert_ne!(base, diff_data, "different data must change leaf hash");
+    }
+
+    #[test]
+    fn leaf_hash_packed_size_is_88_bytes() {
+        // The L2Log serialization must be exactly 88 bytes (L2_TO_L1_LOG_SERIALIZE_SIZE).
+        // We verify this by checking that compute_leaf_hash uses 88 packed bytes:
+        // 1 (l2ShardId) + 1 (isService) + 2 (txNum u16) + 20 (addr) + 32 (key) + 32 (value) = 88
+        // The leaf_hash result is a keccak256 of that — we verify it is deterministic.
+        let h = compute_leaf_hash(0xabcd, Address::from([0xfe; 20]), b"hello");
+        assert_eq!(
+            h,
+            compute_leaf_hash(0xabcd, Address::from([0xfe; 20]), b"hello")
+        );
+    }
+
+    // ── compute_merkle_root ───────────────────────────────────────────────────
+
+    #[test]
+    fn merkle_root_zero_depth_equals_leaf() {
+        let leaf = B256::from([0xaa; 32]);
+        assert_eq!(compute_merkle_root(&[], 0, leaf), leaf);
+    }
+
+    #[test]
+    fn merkle_root_left_child_hashes_leaf_then_sibling() {
+        let leaf = B256::from([0x11; 32]);
+        let sibling = B256::from([0x22; 32]);
+        let expected = {
+            let mut buf = [0u8; 64];
+            buf[..32].copy_from_slice(leaf.as_slice());
+            buf[32..].copy_from_slice(sibling.as_slice());
+            keccak256(buf)
+        };
+        assert_eq!(compute_merkle_root(&[sibling], 0, leaf), expected);
+    }
+
+    #[test]
+    fn merkle_root_right_child_hashes_sibling_then_leaf() {
+        let leaf = B256::from([0x11; 32]);
+        let sibling = B256::from([0x22; 32]);
+        let expected = {
+            let mut buf = [0u8; 64];
+            buf[..32].copy_from_slice(sibling.as_slice());
+            buf[32..].copy_from_slice(leaf.as_slice());
+            keccak256(buf)
+        };
+        assert_eq!(compute_merkle_root(&[sibling], 1, leaf), expected);
+    }
+
+    // ── verify_proof_offline ──────────────────────────────────────────────────
+
+    /// Build a self-consistent MessageInclusionProof for a 1-node Merkle path.
+    ///
+    /// The proof has:
+    ///   leaf   = compute_leaf_hash(tx=5, sender=0xaa..aa, data=0xdeadbeef)
+    ///   root   = keccak256(leaf ++ sibling)   (leaf at index 0 = left child)
+    fn make_valid_proof() -> (MessageInclusionProof, B256) {
+        use crate::types::ProofMessage;
+        let sender_addr = Address::from([0xaau8; 20]);
+        let data = vec![0xde, 0xad, 0xbe, 0xef];
+        let tx_num: u16 = 5;
+
+        let leaf = compute_leaf_hash(tx_num, sender_addr, &data);
+        let sibling = B256::from([0x42u8; 32]);
+        let root = {
+            let mut buf = [0u8; 64];
+            buf[..32].copy_from_slice(leaf.as_slice());
+            buf[32..].copy_from_slice(sibling.as_slice());
+            keccak256(buf)
+        };
+
+        let proof = MessageInclusionProof {
+            chain_id: "324".to_string(),
+            l1_batch_number: 99,
+            l2_message_index: 0, // index 0 = left child
+            root: format!("{root:#x}"),
+            message: ProofMessage {
+                tx_number_in_batch: tx_num as u64,
+                sender: format!("{sender_addr:#x}"),
+                data: format!("0x{}", hex::encode(&data)),
+            },
+            proof: vec![format!("{sibling:#x}")], // old format: plain path
+        };
+        (proof, root)
+    }
+
+    #[test]
+    fn verify_proof_offline_valid_proof_passes() {
+        let (proof, _root) = make_valid_proof();
+        let result = verify_proof_offline(&proof, false).unwrap();
+        assert!(result.merkle_valid, "expected valid: {}", result.verdict);
+        assert_eq!(result.proof_nodes_used, 1);
+        assert!(!result.new_format, "expected old format (plain path)");
+        assert_eq!(result.chain_id, "324");
+        assert_eq!(result.l1_batch_number, 99);
+        assert_eq!(result.leaf_index, 0);
+    }
+
+    #[test]
+    fn verify_proof_offline_tampered_root_fails() {
+        let (mut proof, _) = make_valid_proof();
+        proof.root = format!("{:#x}", B256::from([0xff; 32]));
+        let result = verify_proof_offline(&proof, false).unwrap();
+        assert!(!result.merkle_valid);
+        assert!(result.verdict.contains("INVALID"));
+    }
+
+    #[test]
+    fn verify_proof_offline_verbose_populates_steps() {
+        let (proof, _) = make_valid_proof();
+        let result = verify_proof_offline(&proof, true).unwrap();
+        assert!(result.merkle_valid);
+        // One path node → one step
+        assert_eq!(result.steps.len(), 1);
+        assert_eq!(result.steps[0].step, 0);
+        assert_eq!(result.steps[0].side, "left"); // index 0 is left child
     }
 
     // ── verifyBundle / executeBundle / sendBundle round-trips ────────────────

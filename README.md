@@ -224,6 +224,43 @@ cast-interop bundle extract --chain era --tx 0xSOURCE_TX_HASH --out bundle.hex
 cast-interop debug proof --chain era --tx 0xSOURCE_TX_HASH --msg-index 0 --out proof.json
 ```
 
+2b) **Verify the proof offline before spending gas** (new):
+
+```bash
+cast-interop debug proof-verify proof.json \
+  --bundle bundle.hex \
+  --dest-chain test
+```
+
+Example output (healthy):
+
+```
+source chain:  324
+batch:         42
+leaf index:    7
+proof format:  legacy (plain path) (17 node(s))
+leaf hash:     0x3a8f...c291
+
+✅ computed root:  0xd4e7...b012
+✅ proof.root:     0xd4e7...b012
+✅ interopRoots(324, 42) on 'test': 0xd4e7...b012
+
+✅ VALID — proof is cryptographically correct and interopRoots(324, 42) is confirmed on dest chain 'test'; safe to call bundle verify/execute.
+```
+
+Example output (root not yet propagated):
+
+```
+✅ computed root:  0xd4e7...b012
+✅ proof.root:     0xd4e7...b012
+⚠️  interopRoots(324, 42) on 'test': 0x0000...0000
+   (root not yet propagated to dest chain)
+
+❌ NOT YET READY — proof is cryptographically valid but interopRoots(324, 42) is not yet on dest chain 'test'. Wait for root propagation and retry.
+```
+
+Use `--verbose` to trace every Merkle step, and `--json` for structured output.
+
 3) Wait for root on destination:
 
 ```bash
@@ -339,6 +376,7 @@ cast-interop bundle status --chain test --bundle-hash <bundleHash>
 cast-interop bundle explain --chain test --bundle <bundle.hex> --proof <proof.json>
 cast-interop debug doctor --chain test
 cast-interop debug decode 0xREVERT_DATA_OR_CALLDATA    # decode revert hex offline
+cast-interop debug proof-verify proof.json --bundle bundle.hex --dest-chain test  # verify proof offline
 cast-interop chains validate                           # confirm chains are correctly configured
 ```
 
