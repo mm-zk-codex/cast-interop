@@ -133,8 +133,27 @@ cargo run bundle execute \
   --bundle /tmp/wl.bundle.hex \
   --proof /tmp/wl.proof.json \
   --private-key $PRIVATE_KEY
-# Error: server returned an error response: error code 3: execution reverted: UNTRUSTED_SENDER, data:...
+# Error: server returned an error response: error code 3: execution reverted: UNTRUSTED_SENDER, data: 0x89fd2c76...
 ```
+
+If the RPC returns a revert with raw hex data (the `data:` field after the error), you can decode it offline:
+
+```shell
+cargo run debug decode 0x89fd2c76<rest of revert hex>
+```
+
+```
+❌ kind:     error
+   name:     UnauthorizedMessageSender
+   selector: 0x89fd2c76
+   params:
+     {
+       "expected": "0x0000000000000000000000000000000000000000",
+       "actual":   "0xYourSourceContractAddress"
+     }
+```
+
+This tells you exactly which interop error was thrown and what arguments it carried — no need to look up selectors manually.
 
 
 ### Step 7: (optional) verify the bundle
@@ -223,9 +242,9 @@ Expected:
 
 * it should fail because destinationChainId inside the bundle won’t match block.chainid.
 
-How to diagnose:
+How to diagnose — two options:
 
-inspect the bundle details:
+1. Inspect the bundle details with `bundle explain`:
 
 ```shell
 cargo run bundle explain --rpc http://localhost:3050 --bundle /tmp/wl.bundle.hex --proof /tmp/wl.proof.json
@@ -234,7 +253,35 @@ cargo run bundle explain --rpc http://localhost:3050 --bundle /tmp/wl.bundle.hex
 # ...
 ```
 
+2. Decode the raw revert hex returned by the RPC using `debug decode` (offline, no RPC needed):
+
+```shell
+cargo run debug decode 0x4534e972<rest of revert hex>
+# ❌ kind:     error
+#    name:     WrongDestinationChainId
+#    selector: 0x4534e972
+#    params:
+#      {
+#        "bundleHash": "0x...",
+#        "expected":   "6566",
+#        "actual":     "6565"
+#      }
+```
+
 How to recover:
 
 just run the same execute command against the correct destination RPC.
+
+### Cross-checking chain configuration
+
+If you’re unsure whether your stored chain aliases are pointing to the right networks, validate them all at once:
+
+```shell
+cargo run chains validate
+```
+
+This checks each alias for:
+- RPC reachability
+- Whether the stored chainId matches what the RPC reports (a mismatch here is the root cause of `WrongDestinationChainId` failures when using `--chain` aliases)
+- zkSync-specific method availability
 

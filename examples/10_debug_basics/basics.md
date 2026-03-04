@@ -97,6 +97,28 @@ cargo run bundle extract \
 
 This file contains the ABI-encoded InteropBundle that will later be executed on the destination chain.
 
+You can inspect the bundle contents offline at any time — no RPC needed:
+
+```shell
+cargo run debug decode $(cat /tmp/bundle.hex)
+```
+
+This decodes the raw hex against all known interop types and shows the decoded fields:
+
+```
+📦 kind:     bundle_struct
+   name:     InteropBundle
+   selector:
+   params:
+     {
+       "version": "0x01",
+       "sourceChainId": "6565",
+       "destinationChainId": "6566",
+       "calls": [ ... ],
+       ...
+     }
+```
+
 ## Step 5: Fetch and store the inclusion proof
 Before execution, we need the message inclusion proof. It will be available only once your transaction is finalized (on local machine should happen within couple seconds).
 

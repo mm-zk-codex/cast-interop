@@ -86,6 +86,33 @@ era          324        https://mainnet.era.zksync.io
 test         300        https://sepolia.era.zksync.dev
 ```
 
+Validate configured chains (RPC reachable, stored chainId matches live, zkSync methods available):
+
+```bash
+cast-interop chains validate          # all configured chains
+cast-interop chains validate era      # one specific alias
+```
+
+Example output:
+
+```
+chain: era
+  ✅ rpc_reachable: RPC reachable
+  ✅ chain_id_match: chainId 324 matches live RPC
+  ✅ zks_log_proof: zks_getL2ToL1LogProof supported
+  ✅ zks_batch_number: zks_getL1BatchNumber supported
+
+chain: test
+  ✅ rpc_reachable: RPC reachable
+  ❌ chain_id_match: stored chainId 300 does not match live chainId 270
+       hint: Run: cast-interop chains rm test && cast-interop chains add test --rpc <URL>
+  ...
+
+2 chain(s) validated — 1 failure(s), 0 warning(s)
+```
+
+Use this after adding new chains or when relay operations fail unexpectedly — a mismatched chainId is a common silent misconfiguration.
+
 You can still use the legacy `[rpc]` config for backwards compatibility:
 
 ```toml
@@ -311,6 +338,8 @@ cast-interop debug root --chain test --source-chain 324 --batch <batch> --expect
 cast-interop bundle status --chain test --bundle-hash <bundleHash>
 cast-interop bundle explain --chain test --bundle <bundle.hex> --proof <proof.json>
 cast-interop debug doctor --chain test
+cast-interop debug decode 0xREVERT_DATA_OR_CALLDATA    # decode revert hex offline
+cast-interop chains validate                           # confirm chains are correctly configured
 ```
 
 ### Watch progress
@@ -347,11 +376,17 @@ cast-interop debug watch \
 
 * Confirm the destination chainId matches the bundle’s destination.
 * Validate permissions: `executionAddress`/`unbundlerAddress` must match the signer.
+* Use `cast-interop debug decode <revert_hex>` to decode the raw revert data returned by the RPC into a named interop error with its parameters.
 
 **RPC missing finalized or getLogProof**
 
 * Use `cast-interop debug rpc --chain <alias>` to confirm capabilities.
 * Switch to a zkSync-native RPC if the method is unsupported.
+
+**Relay fails with confusing errors after chains were reconfigured**
+
+* Run `cast-interop chains validate` to check that every alias still points to the correct chain.
+  A common cause is a chain’s chainId changing between environments, or a config entry copied from a different network.
 
 ## Output formats
 
@@ -398,4 +433,54 @@ cast-interop debug tx --chain era 0xSOURCE_TX_HASH
 ```
 bundleHash: 0x4f3c...a2b1
 interopEvents: 3
+```
+
+Example (`debug decode` — decode a known error):
+
+```bash
+cast-interop debug decode 0x4534e972<...params...>
+```
+
+```
+❌ kind:     error
+   name:     WrongDestinationChainId
+   selector: 0x4534e972
+   params:
+     {
+       "actual": "300",
+       "bundleHash": "0xabc...",
+       "expected": "324"
+     }
+```
+
+```bash
+cast-interop debug decode 0x4534e972<...params...> --json
+```
+
+```json
+{
+  "kind": "error",
+  "name": "WrongDestinationChainId",
+  "selector": "4534e972",
+  "params": {
+    "actual": "300",
+    "bundleHash": "0xabc...",
+    "expected": "324"
+  }
+}
+```
+
+Example (`chains validate`):
+
+```bash
+cast-interop chains validate --json
+```
+
+```json
+[
+  { "chain": "era", "name": "rpc_reachable",   "status": "ok",   "details": "RPC reachable" },
+  { "chain": "era", "name": "chain_id_match",  "status": "ok",   "details": "chainId 324 matches live RPC" },
+  { "chain": "era", "name": "zks_log_proof",   "status": "ok",   "details": "zks_getL2ToL1LogProof supported" },
+  { "chain": "era", "name": "zks_batch_number","status": "ok",   "details": "zks_getL1BatchNumber supported" }
+]
 ```
