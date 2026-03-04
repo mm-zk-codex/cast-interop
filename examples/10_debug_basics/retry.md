@@ -17,7 +17,7 @@ You will learn how to:
 
 ## Prerequisites
 
-- Local zkSync OS setup with two L2s (source: 3050, destination: 3051)
+- Local ZKsync OS setup with two L2s (source: 3050, destination: 3051)
 - Contracts from `examples/03_whitelist`
 - `cast-interop` (this repo)
 - `forge` and `cast`
@@ -296,7 +296,7 @@ cargo run chains validate
 This checks each alias for:
 - **RPC reachability** — is the endpoint actually responding?
 - **chainId match** — does the stored chainId match what the live RPC reports? A mismatch is the silent root cause of many `WrongDestinationChainId` failures when using `--chain` aliases
-- **zkSync method availability** — does the RPC support `zks_getL2ToL1LogProof` and `zks_getL1BatchNumber`? A generic public RPC that doesn’t support these will fail proof fetching in ways that look like network errors rather than missing capability
+- **ZKsync method availability** — does the RPC support `zks_getL2ToL1LogProof` and `zks_getL1BatchNumber`? A generic public RPC that doesn’t support these will fail proof fetching in ways that look like network errors rather than missing capability
 
 Fix a stale chain entry:
 

@@ -14,7 +14,7 @@ This is useful when:
 
 ## Prerequisites
 
-- Local zkSync OS setup with two L2s
+- Local ZKsync OS setup with two L2s
 - The `Greeting` contract from `examples/01_greeting`
 - `cast-interop` (this repo)
 - `forge` and `cast`
@@ -158,7 +158,7 @@ cargo run debug proof-verify /tmp/proof.json \
 What this does:
 1. Reconstructs the L2→L1 log leaf hash from the proof's message fields (tx number, sender, data)
 2. Walks the Merkle tree using the proof nodes
-3. Compares the computed root to `proof.root` (the value returned by the zkSync RPC)
+3. Compares the computed root to `proof.root` (the value returned by the ZKsync RPC)
 4. With `--dest-chain`: also calls `interopRoots(chainId, batchNumber)` to confirm the root is stored on the destination chain
 
 Expected output when the proof is valid and the root is already on-chain:

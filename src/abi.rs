@@ -9,7 +9,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-/// The L2→L1 Messenger system contract address, identical on every zkSync chain.
+/// The L2→L1 Messenger system contract address, identical on every ZKsync chain.
 ///
 /// The leaf hash computation always uses this as the `sender` field of the L2 log,
 /// regardless of which contract actually called `sendMessage`. See `MessageHashing.sol`.
@@ -862,7 +862,7 @@ pub struct ProofVerifyResult {
     pub proof_nodes_used: usize,
     /// Hex-encoded root computed by walking the Merkle path.
     pub computed_root: String,
-    /// Hex-encoded expected root from the proof JSON (as returned by zkSync RPC).
+    /// Hex-encoded expected root from the proof JSON (as returned by ZKsync RPC).
     pub expected_root: String,
     /// Whether the computed root matches the expected root.
     pub merkle_valid: bool,
@@ -904,7 +904,7 @@ fn parse_proof_metadata(proof: &[B256]) -> (usize, usize, bool) {
 ///
 /// Reconstructs the L2→L1 log leaf hash from the proof's `message` fields, walks
 /// the Merkle tree with the proof nodes, and compares the computed root to
-/// `proof.root` (the batch settlement root returned by the zkSync RPC).
+/// `proof.root` (the batch settlement root returned by the ZKsync RPC).
 ///
 /// Pass `verbose = true` to populate [`ProofVerifyResult::steps`] with the full
 /// Merkle walk trace — useful for diagnosing exactly where the path diverges.
@@ -930,7 +930,7 @@ pub fn verify_proof_offline(
     let data_bytes =
         hex::decode(data_hex).map_err(|e| anyhow!("invalid proof message data: {e}"))?;
 
-    // Parse expected root (batch settlement root from zkSync RPC)
+    // Parse expected root (batch settlement root from ZKsync RPC)
     let expected_root = B256::from_str(proof.root.trim_start_matches("0x"))
         .map_err(|e| anyhow!("invalid proof root '{}': {e}", proof.root))?;
 

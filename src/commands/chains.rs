@@ -152,8 +152,8 @@ struct ValidateCheck {
 /// Checks performed per chain:
 /// 1. RPC reachability
 /// 2. Stored chainId vs live chainId (mismatch = misconfiguration)
-/// 3. zkSync `zks_getL2ToL1LogProof` support (needed for bundle relaying)
-/// 4. zkSync `zks_getL1BatchNumber` support (needed for proof fetching)
+/// 3. ZKsync `zks_getL2ToL1LogProof` support (needed for bundle relaying)
+/// 4. ZKsync `zks_getL1BatchNumber` support (needed for proof fetching)
 pub async fn run_validate(
     args: ChainsValidateArgs,
     config: Config,

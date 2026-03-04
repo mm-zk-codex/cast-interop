@@ -2,7 +2,7 @@
 name = "cast-interop"
 version = "0.2.0"
 edition = "2021"
-description = "Cli tool for zksync interop"
+description = "Cli tool for ZKsync interop"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/mm-zk-codex/cast-interop"
 readme = "README.md"

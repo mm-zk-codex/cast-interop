@@ -1,6 +1,6 @@
 # cast-interop
 
-`cast-interop` is a cast-like CLI focused on zkSync interop workflows. It helps you extract bundles, fetch proofs, wait for roots, and execute/verify bundles across chains without wiring up the RPC or ABI plumbing every time.
+`cast-interop` is a cast-like CLI focused on ZKsync interop workflows. It helps you extract bundles, fetch proofs, wait for roots, and execute/verify bundles across chains without wiring up the RPC or ABI plumbing every time.
 
 
 ## Quick start
@@ -86,7 +86,7 @@ era          324        https://mainnet.era.zksync.io
 test         300        https://sepolia.era.zksync.dev
 ```
 
-Validate configured chains (RPC reachable, stored chainId matches live, zkSync methods available):
+Validate configured chains (RPC reachable, stored chainId matches live, ZKsync methods available):
 
 ```bash
 cast-interop chains validate          # all configured chains
@@ -237,7 +237,7 @@ cast-interop debug proof-verify proof.json \
   --dest-chain test
 ```
 
-This reconstructs the Merkle leaf hash from the proof's message fields, walks the Merkle tree in pure Rust, and compares the computed root to what the zkSync RPC reported. With `--dest-chain` it also queries `interopRoots(chainId, batchNumber)` live to confirm the root is actually stored on the destination chain.
+This reconstructs the Merkle leaf hash from the proof's message fields, walks the Merkle tree in pure Rust, and compares the computed root to what the ZKsync RPC reported. With `--dest-chain` it also queries `interopRoots(chainId, batchNumber)` live to confirm the root is actually stored on the destination chain.
 
 **Why not just use `bundle explain` (which also does a simulation)?**
 `bundle explain` does an on-chain `eth_call` simulation, which has three problems when debugging a proof:
@@ -467,7 +467,7 @@ cast-interop chains validate
 
 A **stale chainId in the config is the most common silent misconfiguration** in interop workflows. When you ran `chains add`, it stored the live chainId at that moment. If the network was later reconfigured, the stored value is now wrong. The relay flow uses this stored value when building proof lookups, so every bundle will be addressed to the wrong chain — producing `WrongDestinationChainId` or proof failures that look like protocol bugs rather than config issues.
 
-The check also confirms whether each RPC supports the zkSync-specific methods (`zks_getL2ToL1LogProof`, `zks_getL1BatchNumber`) that the proof and relay flows depend on — a generic public RPC node that doesn’t support these will cause failures that are easy to mistake for network problems.
+The check also confirms whether each RPC supports the ZKsync-specific methods (`zks_getL2ToL1LogProof`, `zks_getL1BatchNumber`) that the proof and relay flows depend on — a generic public RPC node that doesn’t support these will cause failures that are easy to mistake for network problems.
 
 Run `chains validate` any time relays fail unexpectedly after a config change. It’s also the recommended first step before starting `auto-relay`, since a misconfigured chain there will silently fail every single bundle it attempts.
 
@@ -486,7 +486,7 @@ Run `chains validate` any time relays fail unexpectedly after a config change. I
 
 * Use `cast-interop debug rpc --chain <alias>` to confirm which methods the RPC supports.
 * Use `cast-interop chains validate` for a structured pass/fail report across all configured chains.
-* Switch to a zkSync-native RPC if the method is unsupported.
+* Switch to a ZKsync-native RPC if the method is unsupported.
 
 ## Output formats
 

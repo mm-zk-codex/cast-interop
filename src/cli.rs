@@ -7,14 +7,14 @@ use std::path::PathBuf;
 
 /// Entry point for the cast-interop CLI.
 ///
-/// Use this tool to build, relay, and debug zkSync interop bundles and token
+/// Use this tool to build, relay, and debug ZKsync interop bundles and token
 /// transfers without wiring RPC/ABI details every time.
 #[derive(Parser, Debug)]
 #[command(
     name = "cast-interop",
     version,
-    about = "Interop-focused cast-like CLI for zkSync",
-    long_about = "Interop-focused cast-like CLI for zkSync.\nUse it to send tokens, build bundles, and debug interop flows across chains.\nExample: cast-interop token send --chain-src era --chain-dest test --token 0xTOKEN --amount 1 --to 0xRECIPIENT --private-key $PRIVATE_KEY"
+    about = "Interop-focused cast-like CLI for ZKsync",
+    long_about = "Interop-focused cast-like CLI for ZKsync.\nUse it to send tokens, build bundles, and debug interop flows across chains.\nExample: cast-interop token send --chain-src era --chain-dest test --token 0xTOKEN --amount 1 --to 0xRECIPIENT --private-key $PRIVATE_KEY"
 )]
 pub struct Cli {
     #[arg(
@@ -146,7 +146,7 @@ pub enum DebugSubcommand {
     Root(RootWaitArgs),
     #[command(
         about = "Check RPC feature support.",
-        long_about = "Ping the RPC to detect zkSync-specific methods and finalized blocks.\nUse this to validate an RPC before running other commands.\nExample: cast-interop debug rpc --chain era"
+        long_about = "Ping the RPC to detect ZKsync-specific methods and finalized blocks.\nUse this to validate an RPC before running other commands.\nExample: cast-interop debug rpc --chain era"
     )]
     Rpc(RpcPingArgs),
     #[command(
@@ -432,7 +432,7 @@ pub enum ChainsSubcommand {
     Rm(ChainsRemoveArgs),
     #[command(
         about = "Validate configured chain aliases.",
-        long_about = "For each configured chain (or a single alias), verify that the RPC is reachable,\nthe stored chainId matches what the RPC reports, and zkSync-specific methods are supported.\nUse this to catch misconfigured chains before running relay operations.\nExample: cast-interop chains validate\nExample: cast-interop chains validate era"
+        long_about = "For each configured chain (or a single alias), verify that the RPC is reachable,\nthe stored chainId matches what the RPC reports, and ZKsync-specific methods are supported.\nUse this to catch misconfigured chains before running relay operations.\nExample: cast-interop chains validate\nExample: cast-interop chains validate era"
     )]
     Validate(ChainsValidateArgs),
 }

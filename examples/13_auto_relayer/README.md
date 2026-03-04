@@ -18,7 +18,7 @@ cause. You could watch hundreds of jobs fail before realising the chainId was wr
 
 `chains validate` catches this before you start, along with two other silent failure modes:
 - **RPC unreachable** — a chain that's down will block proof fetching for all bundles destined to it
-- **Missing zkSync methods** — a generic public RPC node that doesn't support `zks_getL2ToL1LogProof`
+- **Missing ZKsync methods** — a generic public RPC node that doesn't support `zks_getL2ToL1LogProof`
   or `zks_getL1BatchNumber` will cause proof fetching to fail with network-looking errors
 
 Example output (healthy):

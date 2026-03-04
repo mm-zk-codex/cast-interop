@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is this?
 
-`cast-interop` is a Rust CLI tool for zkSync interop workflows. It helps extract bundles, fetch proofs, wait for roots, and execute/verify bundles across chains — like a specialized `cast` focused on cross-chain interop plumbing.
+`cast-interop` is a Rust CLI tool for ZKsync interop workflows. It helps extract bundles, fetch proofs, wait for roots, and execute/verify bundles across chains — like a specialized `cast` focused on cross-chain interop plumbing.
 
 ## Build & Run
 
@@ -41,7 +41,7 @@ This is a single Rust crate with no workspace. All code lives under `src/`.
 ### Key patterns
 
 - **alloy ecosystem**: Uses `alloy-primitives`, `alloy-sol-types`, `alloy-provider`, `alloy-signer-local` for all Ethereum types and interactions. Solidity structs/functions are defined inline with the `sol!` macro.
-- **RPC dual approach**: alloy `Provider` for standard eth calls, raw reqwest for zkSync-specific RPC methods (`zks_getL2ToL1LogProof`, etc.) via `raw_rpc()`.
+- **RPC dual approach**: alloy `Provider` for standard eth calls, raw reqwest for ZKsync-specific RPC methods (`zks_getL2ToL1LogProof`, etc.) via `raw_rpc()`.
 - **AddressBook**: System contract addresses (InteropCenter `0x...10010`, InteropHandler `0x...1000d`, InteropRootStorage `0x...10008`) are resolved from config → CLI flags → hardcoded defaults.
 - **`--json` flag**: Most commands support structured JSON output alongside human-readable output.
 - **`--dry-run`**: Transaction-sending commands support dry-run simulation via `eth_call` instead of actual submission.

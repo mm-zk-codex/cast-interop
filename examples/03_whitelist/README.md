@@ -12,7 +12,7 @@ This is a great “basic” interop use-case: no tokens, no bridges — just cro
 ### Setup keys
 
 ```shell
-# Example rich account from zksync os local networks.
+# Example rich account from ZKsync os local networks.
 export PRIVATE_KEY=0xac1e735be8536c6534bb4f17f06f6afc73b2b5ba84ac2cfb12f7461b20c0bbe3
 ```
 
@@ -55,7 +55,7 @@ export DEST_RECIPIENT=0x...
 ```
 
 ### Deploy WhitelistSource on source chain (3050)
-InteropCenter system contract address (from zkSync OS) is:
+InteropCenter system contract address (from ZKsync OS) is:
 
 ```shell
 export INTEROP_CENTER=0x0000000000000000000000000000000000010010
