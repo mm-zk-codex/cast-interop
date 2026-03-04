@@ -227,6 +227,11 @@ pub enum BundleSubcommand {
         long_about = "Fetch proof from source, wait for root, and verify/execute on destination.\nUse this to automate the full relay flow.\nExample: cast-interop bundle relay --chain-src era --chain-dest test --tx 0xTX_HASH --mode execute --private-key $PRIVATE_KEY"
     )]
     Relay(RelayArgs),
+    #[command(
+        about = "Unbundle a bundle with per-call status control.",
+        long_about = "Call unbundleBundle on the InteropHandler to individually mark calls as executed or cancelled.\nUse this when only a subset of calls should proceed, or to cancel stuck calls.\nExample: cast-interop bundle unbundle --chain dest --bundle bundle.hex --source-chain-id 270 --call-statuses executed,cancelled,executed --private-key $PRIVATE_KEY"
+    )]
+    Unbundle(UnbundleArgs),
 }
 
 impl BundleCommand {
@@ -247,6 +252,9 @@ impl BundleCommand {
                 commands::explain::run(args, config, addresses).await
             }
             BundleSubcommand::Relay(args) => commands::relay::run(args, config, addresses).await,
+            BundleSubcommand::Unbundle(args) => {
+                commands::bundle_unbundle::run(args, config, addresses).await
+            }
         }
     }
 }
@@ -444,7 +452,11 @@ pub struct AutoRelayArgs {
     )]
     pub rpc: Vec<String>,
 
-    #[arg(long, value_name = "HEX", help = "Private key hex string. Default: unset.")]
+    #[arg(
+        long,
+        value_name = "HEX",
+        help = "Private key hex string. Default: unset."
+    )]
     pub private_key: Option<String>,
 
     #[arg(
@@ -823,6 +835,54 @@ pub struct RelayArgs {
 
     #[arg(long, help = "Emit JSON output. Default: false.")]
     pub json: bool,
+}
+
+/// Unbundle a bundle with per-call status control.
+#[derive(Args, Debug)]
+pub struct UnbundleArgs {
+    #[command(flatten)]
+    pub rpc: RpcSelectionArgs,
+
+    #[arg(
+        long,
+        value_name = "HEX_OR_PATH",
+        help = "Encoded bundle as a hex string or path to a .hex file."
+    )]
+    pub bundle: String,
+
+    #[arg(
+        long,
+        value_name = "CHAIN_ID_OR_ALIAS",
+        help = "Source chain ID or configured chain alias. Used to build the unbundle call."
+    )]
+    pub source_chain_id: String,
+
+    #[arg(
+        long,
+        value_name = "CSV",
+        help = "Per-call target status, comma-separated. Each value: unprocessed|executed|cancelled. \
+               Must match the number of calls in the bundle."
+    )]
+    pub call_statuses: String,
+
+    #[arg(
+        long,
+        value_name = "ADDRESS",
+        help = "Override the interop handler address. Default: config addresses.interop_handler."
+    )]
+    pub handler: Option<String>,
+
+    #[arg(
+        long,
+        help = "Simulate only — do not submit a transaction. Default: false."
+    )]
+    pub dry_run: bool,
+
+    #[arg(long, help = "Emit JSON output. Default: false.")]
+    pub json: bool,
+
+    #[command(flatten)]
+    pub signer: SignerArgs,
 }
 
 /// List configured chains.

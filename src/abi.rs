@@ -50,6 +50,7 @@ alloy_sol_types::sol! {
     function bundleStatus(bytes32 bundleHash) external view returns (uint8);
     function callStatus(bytes32 bundleHash, uint256 callIndex) external view returns (uint8);
     function interopRoots(uint256 chainId, uint256 batchNumber) external view returns (bytes32);
+    function unbundleBundle(uint256 _sourceChainId, bytes _bundle, uint8[] _providedCallStatus) external;
 
     // 0x9031f751
     error AttributeAlreadySet(bytes4 selector);
@@ -354,6 +355,19 @@ fn proof_to_sol(proof: MessageInclusionProof) -> Result<MessageInclusionProofSol
         },
         proof: proof_nodes,
     })
+}
+
+pub fn encode_unbundle_bundle_call(
+    source_chain_id: AlloyU256,
+    encoded_bundle: Bytes,
+    call_statuses: Vec<u8>,
+) -> Bytes {
+    let call = unbundleBundleCall {
+        _sourceChainId: source_chain_id,
+        _bundle: encoded_bundle,
+        _providedCallStatus: call_statuses,
+    };
+    Bytes::from(call.abi_encode())
 }
 
 pub fn decode_bundle_status(data: Bytes) -> Result<u8> {
