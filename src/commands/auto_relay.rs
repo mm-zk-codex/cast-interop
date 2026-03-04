@@ -10,11 +10,18 @@ use alloy_provider::Provider;
 use alloy_rpc_types::{BlockNumberOrTag, BlockTransactions};
 use anyhow::{anyhow, Context, Result};
 use std::collections::{HashMap, VecDeque};
-use std::io::{self, Write};
+use crossterm::event::{self, Event, KeyCode};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen};
+use crossterm::{execute, terminal::LeaveAlternateScreen};
+use ratatui::layout::{Constraint, Direction, Layout};
+use ratatui::prelude::{Alignment, Cell, Line, Span};
+use ratatui::style::{Style, Stylize};
+use ratatui::widgets::{Block, Borders, Paragraph, Row, Table};
+use ratatui::Terminal;
+use std::io::{self};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::sync::{mpsc, watch, Semaphore};
+use tokio::sync::{watch, Semaphore};
 use tokio::task::JoinSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -652,149 +659,172 @@ fn load_proof_from_state(
 }
 
 async fn run_ui(state: Arc<Mutex<AppState>>, shutdown_tx: watch::Sender<bool>) -> Result<()> {
-    let (input_tx, mut input_rx) = mpsc::unbounded_channel::<String>();
-    tokio::spawn(async move {
-        let stdin = BufReader::new(tokio::io::stdin());
-        let mut lines = stdin.lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            if input_tx.send(line).is_err() {
-                break;
-            }
-        }
-    });
+    let state = Arc::clone(&state);
+    tokio::task::spawn_blocking(move || run_ui_blocking(state, shutdown_tx))
+        .await
+        .context("ui task failed")??;
+    Ok(())
+}
+
+fn run_ui_blocking(state: Arc<Mutex<AppState>>, shutdown_tx: watch::Sender<bool>) -> Result<()> {
+    enable_raw_mode().context("enable raw mode")?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen).context("enter alt screen")?;
+    let mut terminal = Terminal::new(ratatui::backend::CrosstermBackend::new(stdout))
+        .context("create terminal")?;
+    terminal.clear().ok();
 
     let mut should_quit = false;
-    let mut tick = tokio::time::interval(Duration::from_millis(200));
+    let tick_rate = Duration::from_millis(200);
+    let mut last_tick = Instant::now();
 
     while !should_quit {
-        tokio::select! {
-            _ = tick.tick() => {
-                let snapshot = state.lock().expect("state lock").clone();
-                let output = render_ui(&snapshot);
-                print!("\x1B[2J\x1B[H{output}");
-                io::stdout().flush().ok();
-            }
-            Some(line) = input_rx.recv() => {
-                let command = line.trim();
-                if command.eq_ignore_ascii_case("q") {
-                    should_quit = true;
-                } else if command.eq_ignore_ascii_case("r") {
-                    retry_failed_jobs(&state);
-                } else if command.eq_ignore_ascii_case("c") {
-                    clear_done_jobs(&state);
+        let timeout = tick_rate.saturating_sub(last_tick.elapsed());
+        if event::poll(timeout).context("poll events")? {
+            if let Event::Key(key) = event::read().context("read event")? {
+                match key.code {
+                    KeyCode::Char('q') => should_quit = true,
+                    KeyCode::Char('R') | KeyCode::Char('r') => retry_failed_jobs(&state),
+                    KeyCode::Char('c') | KeyCode::Char('C') => clear_done_jobs(&state),
+                    _ => {}
                 }
             }
+        }
+
+        if last_tick.elapsed() >= tick_rate {
+            let snapshot = state.lock().expect("state lock").clone();
+            terminal
+                .draw(|frame| render_ui(frame, &snapshot))
+                .context("draw ui")?;
+            last_tick = Instant::now();
         }
     }
 
     shutdown_tx.send(true).ok();
+    disable_raw_mode().ok();
+    execute!(terminal.backend_mut(), LeaveAlternateScreen).ok();
+    terminal.show_cursor().ok();
     Ok(())
 }
-fn render_ui(state: &AppState) -> String {
-    let mut output = String::new();
-    output.push_str(&format!("{}\n\n", build_header(state)));
-    output.push_str(&format!("{}\n", build_chain_table(state)));
-    output.push_str(&format!("{}\n", build_job_table(state)));
-    output
+
+fn render_ui(frame: &mut ratatui::Frame, state: &AppState) {
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(chain_table_height(state)),
+            Constraint::Min(0),
+        ])
+        .split(frame.area());
+
+    let header = Paragraph::new(build_header(state))
+        .alignment(Alignment::Left)
+        .block(Block::default());
+    frame.render_widget(header, layout[0]);
+
+    let chains_table = build_chain_table(state);
+    frame.render_widget(chains_table, layout[1]);
+
+    let jobs_table = build_job_table(state);
+    frame.render_widget(jobs_table, layout[2]);
 }
 
-fn build_header(state: &AppState) -> String {
+fn chain_table_height(state: &AppState) -> u16 {
+    let rows = state.chains.len() as u16;
+    rows.saturating_add(3)
+}
+
+fn build_header(state: &AppState) -> Line<'static> {
     let signer = if state.signer_loaded { "yes" } else { "no" };
-    let uptime = format_duration(state.start.elapsed());
     let chain_labels = state
         .chains
         .iter()
         .filter_map(|chain| chain.chain_id.map(|id| format!("{}:{}", chain.label, id)))
         .collect::<Vec<_>>()
         .join(" ");
-    format!("AUTO-RELAY (EXECUTE) | signer: {signer} | chains: {chain_labels} | {uptime}")
+    Line::from(vec![
+        Span::styled("AUTO-RELAY (EXECUTE)", Style::new().bold()),
+        Span::raw(" | key="),
+        Span::styled(signer, Style::new().bold()),
+        Span::raw(" | chains: "),
+        Span::raw(chain_labels),
+        Span::raw(" | [q] quit  [R] retry failed"),
+    ])
 }
 
-fn build_chain_table(state: &AppState) -> String {
-    let headers = ["Name", "ChainId", "Head", "Latency", "Last error"];
-    let widths = [5, 12, 12, 10, 40];
-    let mut rows = Vec::new();
-    for chain in &state.chains {
-        rows.push(vec![
-            chain.label.clone(),
-            chain.chain_id.map(|id| id.to_string()).unwrap_or_default(),
-            chain.head.map(|h| h.to_string()).unwrap_or_default(),
-            chain
-                .latency_ms
-                .map(|ms| format!("{ms}ms"))
-                .unwrap_or_default(),
-            chain.last_error.clone().unwrap_or_default(),
-        ]);
-    }
-    format_table("Chains", &headers, &rows, &widths)
+fn build_chain_table(state: &AppState) -> Table<'static> {
+    let header = Row::new(vec![
+        Cell::from("Name"),
+        Cell::from("Chain ID"),
+        Cell::from("Head"),
+        Cell::from("RPC latency"),
+        Cell::from("Last error"),
+    ])
+    .style(Style::new().bold());
+
+    let rows = state.chains.iter().map(|chain| {
+        Row::new(vec![
+            Cell::from(chain.label.clone()),
+            Cell::from(chain.chain_id.map(|id| id.to_string()).unwrap_or_default()),
+            Cell::from(chain.head.map(|h| h.to_string()).unwrap_or_default()),
+            Cell::from(
+                chain
+                    .latency_ms
+                    .map(|ms| format!("{ms}ms"))
+                    .unwrap_or_default(),
+            ),
+            Cell::from(chain.last_error.clone().unwrap_or_default()),
+        ])
+    });
+
+    Table::new(rows, [
+        Constraint::Length(6),
+        Constraint::Length(12),
+        Constraint::Length(12),
+        Constraint::Length(12),
+        Constraint::Min(20),
+    ])
+    .header(header)
+    .block(Block::default().title("Chains").borders(Borders::ALL))
 }
 
-fn build_job_table(state: &AppState) -> String {
-    let headers = ["Age", "Src→Dest", "Tx", "Stage", "Details"];
-    let widths = [6, 10, 14, 12, 100];
-    let mut rows = Vec::new();
-    for key in state.job_order.iter().rev() {
-        if let Some(job) = state.jobs.get(key) {
+fn build_job_table(state: &AppState) -> Table<'static> {
+    let header = Row::new(vec![
+        Cell::from("Age"),
+        Cell::from("Src→Dest"),
+        Cell::from("Tx hash"),
+        Cell::from("Stage"),
+        Cell::from("Details"),
+    ])
+    .style(Style::new().bold());
+
+    let rows = state.job_order.iter().rev().filter_map(|key| {
+        state.jobs.get(key).map(|job| {
             let age = format_duration(job.created_at.elapsed());
             let src_label = &state.chains[job.src_index].label;
             let dest_label = &state.chains[job.dest_index].label;
-            let tx = short_hash(job.source_tx_hash);
+            let tx = format!("{:#x}", job.source_tx_hash);
             let stage = stage_label(job.stage);
             let details = job_details(job);
-            rows.push(vec![
-                age,
-                format!("{src_label}→{dest_label}"),
-                tx,
-                stage.to_string(),
-                details,
-            ]);
-        }
-    }
-    format_table("Jobs", &headers, &rows, &widths)
-}
+            Row::new(vec![
+                Cell::from(age),
+                Cell::from(format!("{src_label}→{dest_label}")),
+                Cell::from(tx),
+                Cell::from(stage),
+                Cell::from(details),
+            ])
+        })
+    });
 
-fn format_table(title: &str, headers: &[&str], rows: &[Vec<String>], widths: &[usize]) -> String {
-    let mut output = String::new();
-    output.push_str(&format!("{title}\n"));
-    output.push_str(&format_row(headers, widths));
-    let separator: Vec<&str> = headers.iter().map(|_| "-").collect();
-    output.push_str(&format_row(&separator, widths));
-    for row in rows {
-        let row_refs: Vec<&str> = row.iter().map(|s| s.as_str()).collect();
-        output.push_str(&format_row(&row_refs, widths));
-    }
-    output
-}
-
-fn format_row(values: &[&str], widths: &[usize]) -> String {
-    let mut row = String::new();
-    for (value, width) in values.iter().zip(widths.iter()) {
-        row.push_str(&pad_cell(value, *width));
-        row.push(' ');
-    }
-    row.push('\n');
-    row
-}
-
-fn pad_cell(value: &str, width: usize) -> String {
-    let mut out = String::new();
-    let truncated = if value.len() > width {
-        &value[..width.saturating_sub(1)]
-    } else {
-        value
-    };
-    out.push_str(truncated);
-    let padding = width.saturating_sub(truncated.len());
-    out.push_str(&" ".repeat(padding));
-    out
-}
-
-fn short_hash(hash: B256) -> String {
-    let full = format!("{hash:#x}");
-    if full.len() <= 12 {
-        return full;
-    }
-    format!("{}…{}", &full[..8], &full[full.len() - 4..])
+    Table::new(rows, [
+        Constraint::Length(6),
+        Constraint::Length(10),
+        Constraint::Length(66),
+        Constraint::Length(10),
+        Constraint::Min(20),
+    ])
+    .header(header)
+    .block(Block::default().title("Jobs").borders(Borders::ALL))
 }
 
 fn stage_label(stage: JobStage) -> &'static str {
@@ -821,7 +851,7 @@ fn job_details(job: &Job) -> String {
         }
         JobStage::WaitingRoot => {
             if let Some(proof) = &job.log_proof {
-                short_value(&proof.root)
+                proof.root.clone()
             } else {
                 "waiting root".to_string()
             }
@@ -830,20 +860,12 @@ fn job_details(job: &Job) -> String {
         JobStage::Executing => "sending".to_string(),
         JobStage::Done => job
             .handler_tx_hash
-            .map(short_hash)
+            .map(|hash| format!("{hash:#x}"))
             .unwrap_or_else(|| "done".to_string()),
         JobStage::Failed => job
             .last_error
             .clone()
             .unwrap_or_else(|| "failed".to_string()),
-    }
-}
-
-fn short_value(value: &str) -> String {
-    if value.len() <= 10 {
-        value.to_string()
-    } else {
-        format!("{}…{}", &value[..6], &value[value.len() - 4..])
     }
 }
 
@@ -898,11 +920,7 @@ fn clear_done_jobs(state: &Arc<Mutex<AppState>>) {
 
 fn short_error(err: &str) -> String {
     let trimmed = err.lines().next().unwrap_or(err).trim();
-    if trimmed.len() > 80 {
-        format!("{}…", &trimmed[..77])
-    } else {
-        trimmed.to_string()
-    }
+    trimmed.to_string()
 }
 
 fn is_idempotent_error(err: &str) -> bool {
