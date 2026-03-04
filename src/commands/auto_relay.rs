@@ -98,9 +98,14 @@ pub async fn run(args: AutoRelayArgs, _config: Config, addresses: AddressBook) -
         anyhow::bail!("auto-relay requires at least two --rpc entries");
     }
 
-    let signer = match args.private_key.as_deref() {
-        Some(key) => Some(key.parse().context("invalid private key")?),
-        None => None,
+    let signer = match (args.private_key.as_deref(), args.private_key_env.as_deref()) {
+        (Some(key), _) => Some(key.parse().context("invalid private key")?),
+        (None, Some(env_var)) => {
+            let key = std::env::var(env_var)
+                .with_context(|| format!("env var {env_var} not set"))?;
+            Some(key.parse().context("invalid private key from env")?)
+        }
+        (None, None) => None,
     };
 
     let mut chains = Vec::new();

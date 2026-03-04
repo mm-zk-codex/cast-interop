@@ -257,6 +257,15 @@ pub fn encode_interop_bundle(bundle: &InteropBundle) -> Bytes {
     Bytes::from(encoded)
 }
 
+pub fn decode_interop_bundle(data: &Bytes) -> Result<InteropBundle> {
+    InteropBundle::abi_decode(data).map_err(|e| anyhow::anyhow!("failed to decode InteropBundle: {e}"))
+}
+
+pub fn bundle_view_from_encoded(data: &Bytes) -> Result<BundleView> {
+    let bundle = decode_interop_bundle(data)?;
+    Ok(bundle_view(&bundle))
+}
+
 pub fn encode_verify_bundle_call(
     encoded_bundle: Bytes,
     proof: MessageInclusionProof,
@@ -358,13 +367,19 @@ fn proof_to_sol(proof: MessageInclusionProof) -> Result<MessageInclusionProofSol
 
 pub fn decode_bundle_status(data: Bytes) -> Result<u8> {
     let value: (U256,) = <(U256,)>::abi_decode(&data)?;
-    let tmp: u64 = value.0.try_into().unwrap();
+    let tmp: u64 = value
+        .0
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("bundle status value overflow"))?;
     Ok(tmp as u8)
 }
 
 pub fn decode_call_status(data: Bytes) -> Result<u8> {
     let value: (U256,) = <(U256,)>::abi_decode(&data)?;
-    let tmp: u64 = value.0.try_into().unwrap();
+    let tmp: u64 = value
+        .0
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("call status value overflow"))?;
     Ok(tmp as u8)
 }
 

@@ -285,9 +285,13 @@ async fn relay_one(
             ..Default::default()
         };
         let pending = decode_send_transaction(provider.send_transaction(request).await)?;
-        let htx = pending.tx_hash();
-        handler_tx_hash = Some(format!("{htx:#x}"));
+        let htx = *pending.tx_hash();
         println!("sent tx: {htx:#x}");
+        let receipt = pending.get_receipt().await?;
+        if !receipt.status() {
+            anyhow::bail!("handler tx {htx:#x} reverted on-chain");
+        }
+        handler_tx_hash = Some(format!("{htx:#x}"));
     }
 
     let summary = RelaySummary {

@@ -450,6 +450,13 @@ pub struct AutoRelayArgs {
 
     #[arg(
         long,
+        value_name = "ENV_VAR",
+        help = "Environment variable containing the private key. Default: unset."
+    )]
+    pub private_key_env: Option<String>,
+
+    #[arg(
+        long,
         value_name = "N",
         default_value_t = 200,
         help = "Number of blocks to scan on startup. Default: 200."
@@ -559,6 +566,19 @@ pub struct BundleExtractArgs {
         help = "Write the JSON bundle view to a file. Default: unset."
     )]
     pub json_out: Option<PathBuf>,
+
+    #[arg(
+        long,
+        value_name = "INDEX",
+        help = "Message index of the bundle to extract. Default: 0. Ignored when --all is set."
+    )]
+    pub msg_index: Option<u32>,
+
+    #[arg(
+        long,
+        help = "Extract all bundles emitted by the transaction. Default: false."
+    )]
+    pub all: bool,
 
     #[arg(long, help = "Emit JSON output. Default: false.")]
     pub json: bool,
