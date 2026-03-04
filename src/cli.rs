@@ -227,6 +227,11 @@ pub enum BundleSubcommand {
         long_about = "Fetch proof from source, wait for root, and verify/execute on destination.\nUse this to automate the full relay flow.\nExample: cast-interop bundle relay --chain-src era --chain-dest test --tx 0xTX_HASH --mode execute --private-key $PRIVATE_KEY"
     )]
     Relay(RelayArgs),
+    #[command(
+        about = "Trace the full lifecycle of an interop bundle.",
+        long_about = "Given a source tx hash, trace the full interop lifecycle: receipt → bundle decode → proof → root → bundle status → execution tx.\nNon-blocking snapshot of the current state.\nExample: cast-interop bundle trace --rpc-src http://localhost:3050 --rpc-dest http://localhost:3051 --tx 0xTX_HASH"
+    )]
+    Trace(BundleTraceArgs),
 }
 
 impl BundleCommand {
@@ -247,6 +252,9 @@ impl BundleCommand {
                 commands::explain::run(args, config, addresses).await
             }
             BundleSubcommand::Relay(args) => commands::relay::run(args, config, addresses).await,
+            BundleSubcommand::Trace(args) => {
+                commands::bundle_trace::run(args, config, addresses).await
+            }
         }
     }
 }
@@ -275,6 +283,11 @@ pub enum SendSubcommand {
         long_about = "Send a bundle with multiple calls described in a JSON file.\nUse this when you need batching on the destination chain.\nExample: cast-interop send bundle --chain era --to-chain test --calls calls.json --private-key $PRIVATE_KEY"
     )]
     Bundle(SendBundleArgs),
+    #[command(
+        about = "Send multiple interop messages from a JSON file.",
+        long_about = "Read messages from a JSON file and send each as a separate interop message.\nOptionally relay each message after sending.\nExample: cast-interop send batch --rpc http://localhost:3050 --file batch.json --private-key $PRIVATE_KEY --relay --rpc-dest http://localhost:3051"
+    )]
+    Batch(SendBatchArgs),
 }
 
 impl SendCommand {
@@ -286,6 +299,9 @@ impl SendCommand {
             }
             SendSubcommand::Bundle(args) => {
                 commands::send::run_bundle(args, config, addresses).await
+            }
+            SendSubcommand::Batch(args) => {
+                commands::send_batch::run(args, config, addresses).await
             }
         }
     }
@@ -1428,4 +1444,114 @@ pub struct ExplainArgs {
 
     #[arg(long, help = "Emit JSON output. Default: false.")]
     pub json: bool,
+}
+
+/// Trace the full lifecycle of an interop bundle.
+#[derive(Args, Debug)]
+pub struct BundleTraceArgs {
+    #[arg(
+        long,
+        value_name = "RPC_URL",
+        help = "Source chain RPC URL. Use instead of --chain-src."
+    )]
+    pub rpc_src: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "CHAIN",
+        help = "Source chain alias. Use instead of --rpc-src."
+    )]
+    pub chain_src: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "RPC_URL",
+        help = "Destination chain RPC URL. Use instead of --chain-dest."
+    )]
+    pub rpc_dest: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "CHAIN",
+        help = "Destination chain alias. Use instead of --rpc-dest."
+    )]
+    pub chain_dest: Option<String>,
+
+    #[arg(long, value_name = "TX_HASH", help = "Source transaction hash.")]
+    pub tx: String,
+
+    #[arg(
+        long,
+        value_name = "INDEX",
+        default_value_t = 0,
+        help = "Message index within the transaction. Default: 0."
+    )]
+    pub msg_index: u32,
+
+    #[arg(
+        long,
+        value_name = "BLOCKS",
+        default_value_t = 1000,
+        help = "How far back to scan for BundleExecuted events on dest. Default: 1000."
+    )]
+    pub scan_blocks: u64,
+
+    #[arg(long, help = "Emit JSON output. Default: false.")]
+    pub json: bool,
+}
+
+/// Send multiple interop messages from a JSON file.
+#[derive(Args, Debug)]
+pub struct SendBatchArgs {
+    #[command(flatten)]
+    pub rpc: RpcSelectionArgs,
+
+    #[arg(long, value_name = "PATH", help = "Path to the batch JSON file.")]
+    pub file: PathBuf,
+
+    #[command(flatten)]
+    pub signer: SignerArgs,
+
+    #[arg(
+        long,
+        help = "Simulate each message without sending transactions. Default: false."
+    )]
+    pub dry_run: bool,
+
+    #[arg(long, help = "Emit JSON output. Default: false.")]
+    pub json: bool,
+
+    #[arg(
+        long,
+        help = "Relay each message after sending. Requires --rpc-dest or --chain-dest."
+    )]
+    pub relay: bool,
+
+    #[arg(
+        long,
+        value_name = "RPC_URL",
+        help = "Destination chain RPC URL for relay. Use instead of --chain-dest."
+    )]
+    pub rpc_dest: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "CHAIN",
+        help = "Destination chain alias for relay. Use instead of --rpc-dest."
+    )]
+    pub chain_dest: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "MILLISECONDS",
+        help = "Timeout while waiting for proof/root during relay. Default: 300000."
+    )]
+    pub timeout_ms: Option<u64>,
+
+    #[arg(
+        long,
+        value_name = "MILLISECONDS",
+        help = "Polling interval for proof/root during relay. Default: 1000."
+    )]
+    pub poll_ms: Option<u64>,
 }

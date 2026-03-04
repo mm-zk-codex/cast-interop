@@ -1,0 +1,16 @@
+{
+  "messages": [
+    {
+      "toChain": "6566",
+      "to": "0x163CFa0911B9C7166b2608F0E902Fcd341523552",
+      "abi": "greet(string)",
+      "args": ["hello from batch"]
+    },
+    {
+      "toChain": "6566",
+      "to": "0x163CFa0911B9C7166b2608F0E902Fcd341523552",
+      "abi": "greet(string)",
+      "args": ["second message"]
+    }
+  ]
+}

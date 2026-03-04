@@ -1,6 +1,7 @@
 pub mod auto_relay;
 pub mod bundle_action;
 pub mod bundle_extract;
+pub mod bundle_trace;
 pub mod chains;
 pub mod contracts;
 pub mod doctor;
@@ -11,6 +12,7 @@ pub mod relay;
 pub mod root_wait;
 pub mod rpc_ping;
 pub mod send;
+pub mod send_batch;
 pub mod status;
 pub mod token;
 pub mod tx_show;
