@@ -92,15 +92,9 @@ pub async fn run(args: DoctorArgs, config: Config, addresses: AddressBook) -> Re
         }),
         Err(err) => {
             let message = err.to_string();
-            let status =
-                if message.contains("Method not found") || message.contains("method not found") {
-                    "warn"
-                } else {
-                    "warn"
-                };
             checks.push(DoctorCheck {
                 name: "get_log_proof".to_string(),
-                status: status.to_string(),
+                status: "warn".to_string(),
                 details: format!("log proof call failed: {message}"),
                 hint: Some("RPC must support zks_getL2ToL1LogProof to fetch proofs.".to_string()),
             });

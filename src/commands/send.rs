@@ -64,6 +64,15 @@ pub async fn run_message(
     let recipient = encode_evm_v1_with_address(dest_chain_id, to);
     let calldata = encode_send_message_call(recipient, payload, attributes.clone())?;
 
+    let wallet = load_signer(
+        SignerOptions {
+            private_key: args.signer.private_key.as_deref(),
+            private_key_env: args.signer.private_key_env.as_deref(),
+        },
+        &config,
+    )?;
+    require_signer_or_dry_run(wallet.is_some(), args.dry_run, "send message")?;
+
     let client = RpcClient::new(&resolved.url).await?;
 
     if args.dry_run {
@@ -89,15 +98,6 @@ pub async fn run_message(
         return Ok(());
     }
 
-    let wallet = load_signer(
-        SignerOptions {
-            private_key: args.signer.private_key.as_deref(),
-            private_key_env: args.signer.private_key_env.as_deref(),
-        },
-        &config,
-    )?;
-    require_signer_or_dry_run(wallet.is_some(), args.dry_run, "send message")?;
-
     let wallet = wallet.expect("wallet required");
     let chain_id = client.provider.get_chain_id().await?;
     let provider = ProviderBuilder::new()
@@ -115,7 +115,7 @@ pub async fn run_message(
 
     let pending = decode_send_transaction(provider.send_transaction(request).await)?;
 
-    let tx_hash = pending.tx_hash().clone();
+    let tx_hash = *pending.tx_hash();
     let receipt = pending.get_receipt().await?;
 
     let send_id = extract_send_id(receipt.logs(), addresses.interop_center);
@@ -157,6 +157,15 @@ pub async fn run_bundle(
     let destination_chain = encode_evm_v1_chain_only(dest_chain_id);
     let calldata = encode_send_bundle_call(destination_chain, call_starters, bundle_attributes)?;
 
+    let wallet = load_signer(
+        SignerOptions {
+            private_key: args.signer.private_key.as_deref(),
+            private_key_env: args.signer.private_key_env.as_deref(),
+        },
+        &config,
+    )?;
+    require_signer_or_dry_run(wallet.is_some(), args.dry_run, "send bundle")?;
+
     let client = RpcClient::new(&resolved.url).await?;
     if args.dry_run {
         let result = eth_call_with_value(
@@ -181,15 +190,6 @@ pub async fn run_bundle(
         return Ok(());
     }
 
-    let wallet = load_signer(
-        SignerOptions {
-            private_key: args.signer.private_key.as_deref(),
-            private_key_env: args.signer.private_key_env.as_deref(),
-        },
-        &config,
-    )?;
-    require_signer_or_dry_run(wallet.is_some(), args.dry_run, "send bundle")?;
-
     let wallet = wallet.expect("wallet required");
     let chain_id = client.provider.get_chain_id().await?;
     let provider = ProviderBuilder::new()
@@ -207,7 +207,7 @@ pub async fn run_bundle(
 
     let pending = decode_send_transaction(provider.send_transaction(request).await)?;
 
-    let tx_hash = pending.tx_hash().clone();
+    let tx_hash = *pending.tx_hash();
     let receipt = pending.get_receipt().await?;
 
     let bundle_hash = extract_bundle_hash(receipt.logs(), addresses.interop_center);

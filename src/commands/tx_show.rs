@@ -8,7 +8,7 @@ use crate::config::Config;
 use crate::rpc::{get_transaction_receipt, RpcClient};
 use crate::types::{
     address_to_hex, b256_to_hex, format_hex, u256_to_string, AddressBook, EventView,
-    InteropBundleView, TxShowOutput, INTEROP_CENTER_ADDRESS, L1_SENDER_ADDRESS,
+    InteropBundleView, TxShowOutput, L1_SENDER_ADDRESS,
 };
 use alloy_primitives::{Address, B256, U256};
 use anyhow::{Context, Result};
@@ -18,22 +18,23 @@ use std::str::FromStr;
 /// Decode interop events from a transaction receipt.
 ///
 /// Prints bundle information, message hashes, and event summaries.
-pub async fn run(args: TxShowArgs, config: Config, _addresses: AddressBook) -> Result<()> {
+pub async fn run(args: TxShowArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
     let client = RpcClient::new(&resolved.url).await?;
     let tx_hash = B256::from_str(&args.tx_hash)
         .with_context(|| format!("invalid tx hash {}", args.tx_hash))?;
     let receipt = get_transaction_receipt(&client, tx_hash).await?;
 
+    let center = addresses.interop_center;
     let mut bundle_view: Option<InteropBundleView> = None;
     let mut bundle_hash: Option<String> = None;
     let mut l2l1_msg_hash: Option<String> = None;
     let mut events = Vec::new();
 
     for log in receipt.logs() {
-        let topic0 = log.topics().get(0).cloned();
+        let topic0 = log.topics().first().cloned();
         let Some(topic0) = topic0 else { continue };
-        if topic0 == interop_bundle_sent_topic() && log.address() == INTEROP_CENTER_ADDRESS {
+        if topic0 == interop_bundle_sent_topic() && log.address() == center {
             let (l2l1_hash, interop_hash, bundle) =
                 decode_interop_bundle_sent(log.data().data.clone())?;
             let bundle_json = crate::abi::bundle_view(&bundle);
@@ -46,7 +47,6 @@ pub async fn run(args: TxShowArgs, config: Config, _addresses: AddressBook) -> R
                 data: serde_json::to_value(&bundle_json)?,
             });
         } else if topic0 == l1_message_sent_topic() && log.address() == L1_SENDER_ADDRESS {
-            print!("Decoding L1MessageSent event...\n");
             let sender = log
                 .topics()
                 .get(1)
@@ -66,7 +66,7 @@ pub async fn run(args: TxShowArgs, config: Config, _addresses: AddressBook) -> R
                     "payload": format_hex(log.data().data.as_ref()),
                 }),
             });
-        } else if topic0 == message_sent_topic() && log.address() != INTEROP_CENTER_ADDRESS {
+        } else if topic0 == message_sent_topic() && log.address() != center {
             let decoded = decode_message_sent(log.data().data.clone())?;
             let send_id = log
                 .topics()
@@ -86,11 +86,11 @@ pub async fn run(args: TxShowArgs, config: Config, _addresses: AddressBook) -> R
                 }),
             });
         } else if topic0 == bundle_verified_topic() {
-            events.push(simple_bundle_event("BundleVerified", &log));
+            events.push(simple_bundle_event("BundleVerified", log));
         } else if topic0 == bundle_executed_topic() {
-            events.push(simple_bundle_event("BundleExecuted", &log));
+            events.push(simple_bundle_event("BundleExecuted", log));
         } else if topic0 == bundle_unbundled_topic() {
-            events.push(simple_bundle_event("BundleUnbundled", &log));
+            events.push(simple_bundle_event("BundleUnbundled", log));
         } else if topic0 == call_processed_topic() {
             let bundle_hash = log
                 .topics()

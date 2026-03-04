@@ -51,14 +51,14 @@ async fn run_bundle_action(
     let handler = args
         .handler
         .as_deref()
-        .map(|value| Address::from_str(value))
+        .map(Address::from_str)
         .transpose()
         .context("invalid handler address")?
         .unwrap_or(addresses.interop_handler);
     let center = args
         .center
         .as_deref()
-        .map(|value| Address::from_str(value))
+        .map(Address::from_str)
         .transpose()
         .context("invalid center address")?
         .unwrap_or(addresses.interop_center);
@@ -171,7 +171,7 @@ pub fn decode_revert_reason(message: String) -> Option<String> {
     let hex_data = &hex_data[..hex_end];
     let data = decode_hex(hex_data).ok()?;
     if data.len() < 4 {
-        println!("revert data too short, len={}", data.len());
+        eprintln!("revert data too short, len={}", data.len());
         return None;
     }
     let selector = &data[..4];
@@ -187,9 +187,9 @@ pub fn decode_revert_reason(message: String) -> Option<String> {
     let selector_hex = hex::encode(selector);
     error_selector_map()
         .get(&selector_hex)
-        .map(|name| format!("revert: {}", name.to_string()))
+        .map(|name| format!("revert: {name}"))
         .or_else(|| {
-            println!("unknown revert selector 0x{}", selector_hex);
+            eprintln!("unknown revert selector 0x{}", selector_hex);
             None
         })
 }

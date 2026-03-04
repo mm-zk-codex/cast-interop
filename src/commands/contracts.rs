@@ -6,7 +6,7 @@ use alloy_primitives::Address;
 use alloy_provider::Provider;
 use anyhow::Result;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::Path;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -64,8 +64,8 @@ pub async fn run(args: ContractsArgs, config: Config, addresses: AddressBook) ->
     }
 
     println!(
-        "{:<22} {:<44} {:<10} {}",
-        "name", "address", "codeLen", "abi"
+        "{:<22} {:<44} {:<10} abi",
+        "name", "address", "codeLen"
     );
     for row in rows {
         let deployed = if row.deployed {
@@ -91,7 +91,7 @@ async fn build_row(
     name: &str,
     address: Address,
     client: &RpcClient,
-    abi_dir: &PathBuf,
+    abi_dir: &Path,
     abi_file: &str,
 ) -> Result<ContractRow> {
     let code = client.provider.get_code_at(address).await?;
