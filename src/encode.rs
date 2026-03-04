@@ -153,6 +153,175 @@ pub fn decode_evm_v1_address(data: &Bytes) -> Result<(U256, Option<Address>)> {
     Ok((chain_id, address))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_primitives::{address, Address, Bytes, U256};
+
+    #[test]
+    fn encode_decode_with_address_roundtrip() {
+        let chain_id = U256::from(1u64);
+        let addr = address!("1234567890123456789012345678901234567890");
+        let encoded = encode_evm_v1_with_address(chain_id, addr);
+        let (decoded_chain, decoded_addr) = decode_evm_v1_address(&encoded).unwrap();
+        assert_eq!(decoded_chain, chain_id);
+        assert_eq!(decoded_addr, Some(addr));
+    }
+
+    #[test]
+    fn encode_decode_large_chain_id() {
+        // 300 = 0x012c, requires 2 bytes
+        let chain_id = U256::from(300u64);
+        let addr = address!("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
+        let encoded = encode_evm_v1_with_address(chain_id, addr);
+        let (decoded_chain, decoded_addr) = decode_evm_v1_address(&encoded).unwrap();
+        assert_eq!(decoded_chain, chain_id);
+        assert_eq!(decoded_addr, Some(addr));
+    }
+
+    #[test]
+    fn encode_decode_chain_only_no_address() {
+        let chain_id = U256::from(42u64);
+        let encoded = encode_evm_v1_chain_only(chain_id);
+        let (decoded_chain, decoded_addr) = decode_evm_v1_address(&encoded).unwrap();
+        assert_eq!(decoded_chain, chain_id);
+        assert_eq!(decoded_addr, None);
+    }
+
+    #[test]
+    fn chain_reference_is_minimal_single_byte() {
+        // chain_id=1 → 1 byte chain ref: header(4) + len(1) + chain(1) + addr_len(1) + addr(20) = 27
+        let chain_id = U256::from(1u64);
+        let encoded = encode_evm_v1_with_address(
+            chain_id,
+            address!("0000000000000000000000000000000000000001"),
+        );
+        assert_eq!(encoded.len(), 27);
+    }
+
+    #[test]
+    fn encode_evm_v1_address_only_layout() {
+        let addr = address!("1234567890123456789012345678901234567890");
+        let encoded = encode_evm_v1_address_only(addr);
+        // EVM_V1_ADDRESS_ONLY_HEADER(5) + addr_len(1) + addr(20) = 26
+        assert_eq!(encoded.len(), 26);
+        assert_eq!(&encoded[..5], &EVM_V1_ADDRESS_ONLY_HEADER);
+        assert_eq!(encoded[5], 20);
+        assert_eq!(&encoded[6..], addr.as_slice());
+    }
+
+    #[test]
+    fn encode_asset_id_is_deterministic() {
+        let chain_id = U256::from(1u64);
+        let token = address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+        let vault: Address = DEFAULT_NATIVE_TOKEN_VAULT.parse().unwrap();
+        let id1 = encode_asset_id(chain_id, token, vault);
+        let id2 = encode_asset_id(chain_id, token, vault);
+        assert_eq!(id1, id2);
+        assert_eq!(id1.len(), 32);
+    }
+
+    #[test]
+    fn encode_asset_id_changes_with_chain() {
+        let token = address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+        let vault: Address = DEFAULT_NATIVE_TOKEN_VAULT.parse().unwrap();
+        let id1 = encode_asset_id(U256::from(1u64), token, vault);
+        let id2 = encode_asset_id(U256::from(2u64), token, vault);
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn encode_asset_id_changes_with_token() {
+        let chain_id = U256::from(1u64);
+        let vault: Address = DEFAULT_NATIVE_TOKEN_VAULT.parse().unwrap();
+        let id1 = encode_asset_id(
+            chain_id,
+            address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
+            vault,
+        );
+        let id2 = encode_asset_id(
+            chain_id,
+            address!("dAC17F958D2ee523a2206206994597C13D831ec7"),
+            vault,
+        );
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn parse_permissionless_sentinel_returns_none() {
+        let result = parse_permissionless_address("permissionless").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_permissionless_valid_address_returns_some() {
+        let result =
+            parse_permissionless_address("0x1234567890123456789012345678901234567890").unwrap();
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn parse_permissionless_invalid_address_errors() {
+        assert!(parse_permissionless_address("notanaddress").is_err());
+    }
+
+    #[test]
+    fn parse_payload_both_flags_errors() {
+        let result = parse_payload(Some("0xdead"), Some(std::path::Path::new("/tmp/x")));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_payload_neither_flag_errors() {
+        assert!(parse_payload(None, None).is_err());
+    }
+
+    #[test]
+    fn parse_payload_hex_with_0x_prefix() {
+        let result = parse_payload(Some("0xdeadbeef"), None).unwrap();
+        assert_eq!(result.as_ref(), &[0xde, 0xad, 0xbe, 0xef]);
+    }
+
+    #[test]
+    fn parse_payload_hex_without_prefix() {
+        let result = parse_payload(Some("deadbeef"), None).unwrap();
+        assert_eq!(result.as_ref(), &[0xde, 0xad, 0xbe, 0xef]);
+    }
+
+    #[test]
+    fn encode_interop_call_value_has_4_byte_selector() {
+        let encoded = encode_interop_call_value(U256::from(1000u64));
+        // 4-byte selector + 32-byte uint256
+        assert_eq!(encoded.len(), 36);
+    }
+
+    #[test]
+    fn encode_indirect_call_has_4_byte_selector() {
+        let encoded = encode_indirect_call(U256::from(500u64));
+        assert_eq!(encoded.len(), 36);
+    }
+
+    #[test]
+    fn encode_call_value_and_indirect_have_different_selectors() {
+        let a = encode_interop_call_value(U256::from(1u64));
+        let b = encode_indirect_call(U256::from(1u64));
+        assert_ne!(&a[..4], &b[..4]);
+    }
+
+    #[test]
+    fn decode_evm_v1_address_too_short_errors() {
+        let short = Bytes::from(vec![0u8; 4]);
+        assert!(decode_evm_v1_address(&short).is_err());
+    }
+
+    #[test]
+    fn decode_evm_v1_address_wrong_header_errors() {
+        // Wrong header bytes
+        let data = Bytes::from(vec![0xFF, 0x01, 0x00, 0x00, 0x01, 0x01, 0x00]);
+        assert!(decode_evm_v1_address(&data).is_err());
+    }
+}
+
 /// Convert a chain ID to a minimal big-endian byte representation.
 fn to_chain_reference(chain_id: U256) -> Vec<u8> {
     if chain_id == U256::ZERO {
