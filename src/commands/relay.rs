@@ -6,7 +6,7 @@ use crate::cli::RelayArgs;
 use crate::commands::bundle_action::decode_send_transaction;
 use crate::config::Config;
 use crate::relay_flow::{build_message_proof, wait_for_proof, wait_for_root};
-use crate::rpc::{eth_call, get_transaction_receipt, RpcClient};
+use crate::rpc::{get_transaction_receipt, simulate_call, RpcClient};
 use crate::signer::{load_signer, SignerOptions};
 use crate::types::{
     format_hex, require_signer_or_dry_run, AddressBook, MessageInclusionProof, RelaySummary,
@@ -121,11 +121,23 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
 
     let mut handler_tx_hash = None;
     if args.dry_run {
-        match eth_call(&dest_client, handler, calldata.clone()).await {
-            Ok(_) => println!("dry-run success"),
-            Err(err) => println!("dry-run failed: {err}"),
+        let sim = simulate_call(&dest_client, handler, calldata.clone()).await;
+        if sim.success() {
+            println!("dry-run ok  (estimated gas: {})", format_gas(sim.gas_estimate));
+        } else {
+            println!("dry-run reverted: {}", sim.revert_reason.unwrap());
         }
     } else {
+        if !args.skip_simulation {
+            let sim = simulate_call(&dest_client, handler, calldata.clone()).await;
+            if sim.success() {
+                println!("simulation: ok  (estimated gas: {})", format_gas(sim.gas_estimate));
+            } else {
+                eprintln!("simulation reverted: {}", sim.revert_reason.unwrap());
+                anyhow::bail!("aborting relay — simulation failed (use --skip-simulation to override)");
+            }
+        }
+
         let wallet = wallet.expect("wallet required");
         let chain_id = dest_client.provider.get_chain_id().await?;
 
@@ -166,6 +178,18 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
     }
 
     Ok(())
+}
+
+fn format_gas(gas: u64) -> String {
+    let s = gas.to_string();
+    let mut result = String::new();
+    for (i, ch) in s.chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            result.push(',');
+        }
+        result.push(ch);
+    }
+    result.chars().rev().collect()
 }
 
 /// Write relay artifacts (bundle, proof, summary) to a directory.
