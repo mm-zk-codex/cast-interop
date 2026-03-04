@@ -1,4 +1,5 @@
 pub mod auto_relay;
+pub mod balances;
 pub mod bundle_action;
 pub mod bundle_extract;
 pub mod chains;

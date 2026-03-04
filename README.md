@@ -313,6 +313,74 @@ cast-interop bundle explain --chain test --bundle <bundle.hex> --proof <proof.js
 cast-interop debug doctor --chain test
 ```
 
+### Check balances across chains
+
+Query native ETH and optional ERC-20 balances for any address across all configured chains in parallel. Useful for verifying that funds arrived after an interop transfer.
+
+```bash
+# All configured chains, native ETH only
+cast-interop debug balances --address 0xYOUR_WALLET
+
+# Include ERC-20 tokens (repeat --token for multiple)
+cast-interop debug balances \
+  --address 0xYOUR_WALLET \
+  --token 0xUSDC_ADDRESS \
+  --token 0xWBTC_ADDRESS
+
+# Single chain by alias
+cast-interop debug balances --address 0xYOUR_WALLET --chain era
+
+# Ad-hoc RPC URL (mutually exclusive with --chain)
+cast-interop debug balances --address 0xYOUR_WALLET --rpc https://mainnet.era.zksync.io
+
+# JSON output
+cast-interop debug balances --address 0xYOUR_WALLET --json
+
+# Hide chains with all-zero balances
+cast-interop debug balances --address 0xYOUR_WALLET --hide-zero
+```
+
+Sample output:
+
+```
+Balances for 0xd8da6bf26964af9d7eed9e03e53415d37aa96045
+
+  chain: era (id=324)
+    native: 1.25 ETH  (1250000000000000000 wei)
+    USDC: 500.0  (500000000 wei)  [0x3355df6d4c9c3035724fd0e3914de96a5a83aaf4]
+
+  chain: test (id=300)
+    native: 0.05 ETH  (50000000000000000 wei)
+    USDC: 0  (0 wei)  [0x3355df6d4c9c3035724fd0e3914de96a5a83aaf4]
+```
+
+Sample JSON output (`--json`):
+
+```json
+{
+  "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+  "chains": [
+    {
+      "chain": "era",
+      "rpc": "https://mainnet.era.zksync.io",
+      "chainId": 324,
+      "nativeWei": "1250000000000000000",
+      "nativeFormatted": "1.25",
+      "tokens": [
+        {
+          "token": "0x3355df6d4c9c3035724fd0e3914de96a5a83aaf4",
+          "symbol": "USDC",
+          "decimals": 6,
+          "raw": "500000000",
+          "formatted": "500"
+        }
+      ],
+      "error": null
+    }
+  ]
+}
+```
+
 ### Watch progress
 
 ```bash

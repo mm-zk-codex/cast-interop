@@ -164,6 +164,11 @@ pub enum DebugSubcommand {
         long_about = "Poll for finalization, log proof availability, root propagation, and bundle status.\nUse this to monitor relay progress over time.\nExample: cast-interop debug watch --chain-src era --chain-dest test --tx 0xTX_HASH --until executed"
     )]
     Watch(WatchArgs),
+    #[command(
+        about = "Show native and ERC-20 balances across all configured chains.",
+        long_about = "Query an address's native token (ETH) and optional ERC-20 balances on every configured chain in parallel.\nUse this to quickly spot which chains hold funds after an interop transfer.\nExample: cast-interop debug balances --address 0xYOUR_WALLET\nExample: cast-interop debug balances --address 0xWALLET --token 0xTOKEN_A --token 0xTOKEN_B --chain era\nExample: cast-interop debug balances --address 0xWALLET --json"
+    )]
+    Balances(BalancesArgs),
 }
 
 impl DebugCommand {
@@ -179,6 +184,9 @@ impl DebugCommand {
             }
             DebugSubcommand::Doctor(args) => commands::doctor::run(args, config, addresses).await,
             DebugSubcommand::Watch(args) => commands::watch::run(args, config, addresses).await,
+            DebugSubcommand::Balances(args) => {
+                commands::balances::run(args, config, addresses).await
+            }
         }
     }
 }
@@ -1428,4 +1436,47 @@ pub struct ExplainArgs {
 
     #[arg(long, help = "Emit JSON output. Default: false.")]
     pub json: bool,
+}
+
+/// Query native and ERC-20 balances across chains.
+#[derive(Args, Debug)]
+pub struct BalancesArgs {
+    #[arg(
+        long,
+        value_name = "ADDRESS",
+        help = "Wallet or contract address to query."
+    )]
+    pub address: String,
+
+    #[arg(
+        long,
+        value_name = "ADDRESS",
+        help = "ERC-20 token address to include. May be repeated for multiple tokens.",
+        num_args = 1,
+        action = clap::ArgAction::Append
+    )]
+    pub token: Vec<String>,
+
+    #[arg(
+        long,
+        value_name = "CHAIN",
+        help = "Limit query to a single chain alias (from config). Mutually exclusive with --rpc."
+    )]
+    pub chain: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "RPC_URL",
+        help = "Query a specific RPC URL directly. Mutually exclusive with --chain."
+    )]
+    pub rpc: Option<String>,
+
+    #[arg(long, help = "Emit JSON output.")]
+    pub json: bool,
+
+    #[arg(
+        long,
+        help = "Hide chains where every balance is zero. Useful when scanning many chains."
+    )]
+    pub hide_zero: bool,
 }
