@@ -1,6 +1,8 @@
 use alloy_primitives::{Address, Bytes, B256};
 use alloy_provider::{DynProvider, Provider, ProviderBuilder};
-use alloy_rpc_types::{BlockNumberOrTag, TransactionInput, TransactionReceipt, TransactionRequest};
+use alloy_rpc_types::{
+    BlockNumberOrTag, Filter, Log, TransactionInput, TransactionReceipt, TransactionRequest,
+};
 use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -35,7 +37,7 @@ pub struct LogProof {
     pub id: u64,
     pub proof: Vec<String>,
     pub root: String,
-    #[serde(rename = "batch_number")]
+    #[serde(alias = "batch_number", alias = "batchNumber")]
     pub batch_number: u64,
 }
 
@@ -135,6 +137,10 @@ pub async fn raw_rpc<T: for<'de> Deserialize<'de>>(
     }
     serde_json::from_value(value.get("result").cloned().unwrap_or_default())
         .context("rpc missing result")
+}
+
+pub async fn get_logs(client: &RpcClient, filter: Filter) -> Result<Vec<Log>> {
+    Ok(client.provider.get_logs(&filter).await?)
 }
 
 pub async fn eth_call(client: &RpcClient, to: Address, data: Bytes) -> Result<Bytes> {
