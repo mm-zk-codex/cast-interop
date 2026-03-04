@@ -1,11 +1,10 @@
+use crate::types::format_hex;
 use alloy_primitives::Address;
 use alloy_signer::Signer;
 use alloy_signer_local::PrivateKeySigner;
 use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-
-const PRIVIDIUM_DOMAIN: &str = "localhost:3000";
 
 /// Bearer token returned by Prividium login.
 #[derive(Debug, Clone)]
@@ -51,11 +50,24 @@ pub async fn authenticate(api_base_url: &str, private_key: &str) -> Result<Sessi
     submit_signature(&http, api_base_url, &msg, &signature).await
 }
 
+/// Extract the RFC 3986 authority (host[:port]) from a URL for use as the SIWE domain.
+fn siwe_domain(api_base_url: &str) -> String {
+    url::Url::parse(api_base_url)
+        .ok()
+        .and_then(|u| {
+            u.host_str().map(|h| match u.port() {
+                Some(p) => format!("{h}:{p}"),
+                None => h.to_string(),
+            })
+        })
+        .unwrap_or_else(|| api_base_url.to_string())
+}
+
 async fn request_siwe_message(http: &Client, api_base_url: &str, address: Address) -> Result<String> {
     let url = format!("{}/api/siwe-messages", api_base_url.trim_end_matches('/'));
     let body = serde_json::json!({
         "address": format!("{address:#x}"),
-        "domain": PRIVIDIUM_DOMAIN,
+        "domain": siwe_domain(api_base_url),
     });
 
     let resp = http
@@ -92,7 +104,7 @@ async fn sign_message(signer: &PrivateKeySigner, message: &str) -> Result<String
         .sign_message(message.as_bytes())
         .await
         .context("failed to sign SIWE message")?;
-    Ok(format!("0x{}", hex::encode(signature.as_bytes())))
+    Ok(format_hex(&signature.as_bytes()))
 }
 
 async fn submit_signature(
@@ -222,5 +234,27 @@ mod tests {
         let bad_key = "not_a_hex_key";
         let result: std::result::Result<PrivateKeySigner, _> = bad_key.parse();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn siwe_domain_extracts_host_from_https_url() {
+        assert_eq!(siwe_domain("https://permissions.example.com"), "permissions.example.com");
+    }
+
+    #[test]
+    fn siwe_domain_includes_non_default_port() {
+        assert_eq!(siwe_domain("https://permissions.example.com:8443/some/path"), "permissions.example.com:8443");
+    }
+
+    #[test]
+    fn siwe_domain_omits_default_https_port() {
+        // url::Url strips the default port (443 for https)
+        assert_eq!(siwe_domain("https://permissions.example.com:443"), "permissions.example.com");
+    }
+
+    #[test]
+    fn siwe_domain_falls_back_to_raw_url_on_invalid_input() {
+        let raw = "not-a-url";
+        assert_eq!(siwe_domain(raw), raw);
     }
 }

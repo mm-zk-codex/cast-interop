@@ -33,6 +33,10 @@ impl RpcClient {
 
     /// Create an RPC client that injects `Authorization: Bearer <token>` on
     /// every request — both for alloy provider calls and raw JSON-RPC calls.
+    ///
+    /// Unlike [`Self::new`], this is synchronous because the authenticated transport
+    /// is constructed directly from a pre-built `reqwest::Client` without any network
+    /// calls (connection is established lazily on first use).
     pub fn new_with_auth(url: &str, bearer_token: &str) -> Result<Self> {
         let auth_value = HeaderValue::from_str(&format!("Bearer {bearer_token}"))
             .context("invalid bearer token for Authorization header")?;

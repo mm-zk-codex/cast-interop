@@ -123,89 +123,22 @@ Signer flags (required for sending transactions unless using `--dry-run`):
 
 ## Prividium Support
 
-[Prividium](https://github.com/mm-zk-codex) chains require authentication before RPC requests. The CLI implements the SIWE (Sign-In with Ethereum) auth flow automatically.
-
-### What you need
-
-* A wallet address registered in the Prividium system
-* The corresponding private key
-* The Prividium API base URL (e.g. `https://permissions.example.com`)
-
-### Add a Prividium chain
+[Prividium](https://github.com/mm-zk-codex) chains require SIWE authentication before RPC requests. The CLI handles this automatically — register a chain alias once and all subsequent commands authenticate transparently.
 
 ```bash
+# Register a Prividium chain
 cast-interop chains add mychain \
   --rpc https://permissions.example.com/rpc \
   --prividium-url https://permissions.example.com \
   --prividium-key-env PRIVIDIUM_PRIVATE_KEY
-```
 
-This stores the chain alias with its Prividium API URL. Every subsequent command using `--chain mychain` will automatically authenticate via SIWE before making RPC requests.
-
-### Manual config (config.toml)
-
-```toml
-[chains.mychain]
-rpc = "https://permissions.example.com/rpc"
-chainId = 270
-prividium_url = "https://permissions.example.com"
-prividium_key_env = "PRIVIDIUM_PRIVATE_KEY"
-```
-
-### Environment variable
-
-Set the private key used for Prividium auth:
-
-```bash
 export PRIVIDIUM_PRIVATE_KEY=0xYourPrivateKeyHex
+
+# All commands then work normally
+cast-interop bundle relay --chain-src mychain --chain-dest test --tx 0xSOURCE_TX_HASH --private-key $PRIVATE_KEY
 ```
 
-The default env variable name is `PRIVIDIUM_PRIVATE_KEY`. Override it per-chain with `prividium_key_env`.
-
-### Authentication flow
-
-Internally, the CLI performs these steps before the first RPC call on a Prividium chain:
-
-1. `POST {prividium_url}/api/siwe-messages` — obtain a nonce-bearing SIWE message
-2. Sign the message with the configured private key (EIP-191 `personal_sign`)
-3. `POST {prividium_url}/api/auth/login/crypto-native` — submit signature, receive bearer token
-4. All subsequent RPC requests include `Authorization: Bearer <token>`
-
-Session tokens are valid for several hours; a new token is obtained per CLI invocation.
-
-### Use with existing commands
-
-Prividium chains work transparently with all commands:
-
-```bash
-# relay a bundle across a Prividium chain
-cast-interop bundle relay \
-  --chain-src mychain \
-  --chain-dest test \
-  --tx 0xSOURCE_TX_HASH \
-  --private-key $PRIVATE_KEY
-
-# debug a transaction
-cast-interop debug tx --chain mychain 0xTX_HASH
-
-# token send
-cast-interop token send \
-  --chain-src mychain \
-  --chain-dest test \
-  --token 0xTOKEN \
-  --amount 1 \
-  --to 0xRECIPIENT \
-  --private-key $PRIVATE_KEY
-```
-
-### Errors
-
-| Error | Cause |
-|---|---|
-| `wallet address not found in Prividium` | The address is not registered in the Prividium system |
-| `Prividium login requires MFA` | Admin account with passkey — use a non-admin wallet |
-| `Prividium private key not set` | `PRIVIDIUM_PRIVATE_KEY` env var is missing |
-| `Prividium rate limit` | Too many auth attempts — wait a few minutes |
+See [docs/prividium.md](docs/prividium.md) for full setup, config format, auth flow details, and error reference.
 
 ## Core workflows
 

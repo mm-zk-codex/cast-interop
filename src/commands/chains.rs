@@ -18,27 +18,25 @@ struct ChainListItem {
 
 /// List configured chain aliases and their RPC URLs.
 pub async fn run_list(args: ChainsListArgs, config: Config, _addresses: AddressBook) -> Result<()> {
-    let mut items = Vec::new();
-
     let mut chains = config.chains.clone().unwrap_or_default();
     if chains.is_empty() {
         chains = legacy_chains(&config);
     }
 
-    for (alias, cfg) in chains {
-        // Use the cached chain_id if available; only probe if missing.
+    // Probe chain IDs concurrently. Chains with a cached chain_id skip the probe.
+    let items: Vec<ChainListItem> = futures::future::join_all(chains.into_iter().map(|(alias, cfg)| async move {
         let chain_id = if cfg.chain_id.is_some() {
             cfg.chain_id
         } else {
             probe_chain_id(&cfg).await.ok()
         };
-        items.push(ChainListItem {
+        ChainListItem {
             alias,
             rpc: redact_url(&cfg.rpc),
             chain_id: chain_id.map(|id| id.to_string()),
             prividium_url: cfg.prividium_url.clone(),
-        });
-    }
+        }
+    })).await;
 
     if args.json {
         println!("{}", serde_json::to_string_pretty(&items)?);
@@ -68,15 +66,15 @@ pub async fn run_add(
 ) -> Result<()> {
     let rpc = args.rpc.trim();
 
-    // Build a temporary ResolvedRpc so we can use the shared auth logic to
+    // Build a temporary ChainConfig so we can use the shared auth logic to
     // probe the chain ID (important when adding a Prividium chain).
-    let resolved = ResolvedRpc {
-        url: rpc.to_string(),
-        alias: None,
-        chain_id: None,
+    let temp_cfg = ChainConfig {
+        rpc: rpc.to_string(),
         prividium_url: args.prividium_url.clone(),
         prividium_key_env: args.prividium_key_env.clone(),
+        ..Default::default()
     };
+    let resolved = ResolvedRpc::from_chain_config(&temp_cfg, None);
 
     let client = resolved.to_rpc_client().await?;
     let chain_id = client
@@ -123,37 +121,13 @@ fn legacy_chains(config: &Config) -> BTreeMap<String, ChainConfig> {
     let mut map = BTreeMap::new();
     if let Some(rpc) = &config.rpc {
         if let Some(url) = &rpc.default {
-            map.insert(
-                "default".to_string(),
-                ChainConfig {
-                    rpc: url.clone(),
-                    chain_id: None,
-                    prividium_url: None,
-                    prividium_key_env: None,
-                },
-            );
+            map.insert("default".to_string(), ChainConfig { rpc: url.clone(), ..Default::default() });
         }
         if let Some(url) = &rpc.a {
-            map.insert(
-                "a".to_string(),
-                ChainConfig {
-                    rpc: url.clone(),
-                    chain_id: None,
-                    prividium_url: None,
-                    prividium_key_env: None,
-                },
-            );
+            map.insert("a".to_string(), ChainConfig { rpc: url.clone(), ..Default::default() });
         }
         if let Some(url) = &rpc.b {
-            map.insert(
-                "b".to_string(),
-                ChainConfig {
-                    rpc: url.clone(),
-                    chain_id: None,
-                    prividium_url: None,
-                    prividium_key_env: None,
-                },
-            );
+            map.insert("b".to_string(), ChainConfig { rpc: url.clone(), ..Default::default() });
         }
     }
     map
@@ -162,16 +136,8 @@ fn legacy_chains(config: &Config) -> BTreeMap<String, ChainConfig> {
 /// Probe the chain ID from a ChainConfig for display purposes.
 /// Uses Prividium auth if the chain has it configured.
 async fn probe_chain_id(cfg: &ChainConfig) -> Result<u64> {
-    let resolved = ResolvedRpc {
-        url: cfg.rpc.clone(),
-        alias: None,
-        chain_id: None,
-        prividium_url: cfg.prividium_url.clone(),
-        prividium_key_env: cfg.prividium_key_env.clone(),
-    };
-    let client = resolved.to_rpc_client().await?;
-    let chain = client.provider.get_chain_id().await?;
-    Ok(chain)
+    let client = ResolvedRpc::from_chain_config(cfg, None).to_rpc_client().await?;
+    Ok(client.provider.get_chain_id().await?)
 }
 
 /// Redact credentials from a URL string for display.

@@ -1057,6 +1057,7 @@ dependencies = [
  "anyhow",
  "clap",
  "dirs",
+ "futures",
  "hex",
  "reqwest",
  "serde",

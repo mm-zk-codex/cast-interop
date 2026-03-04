@@ -78,6 +78,18 @@ pub struct ResolvedRpc {
 }
 
 impl ResolvedRpc {
+    /// Build a `ResolvedRpc` from a `ChainConfig`, carrying over all auth fields.
+    /// `alias` and `chain_id` are taken from the config.
+    pub fn from_chain_config(cfg: &ChainConfig, alias: Option<&str>) -> Self {
+        Self {
+            url: cfg.rpc.clone(),
+            alias: alias.map(|s| s.to_string()),
+            chain_id: cfg.chain_id,
+            prividium_url: cfg.prividium_url.clone(),
+            prividium_key_env: cfg.prividium_key_env.clone(),
+        }
+    }
+
     /// Build an [`crate::rpc::RpcClient`] for this endpoint.
     ///
     /// If the chain has a `prividium_url`, performs SIWE authentication first
@@ -162,13 +174,7 @@ impl Config {
 
         if let Some(alias) = chain {
             if let Some(chain_cfg) = self.chains.as_ref().and_then(|chains| chains.get(alias)) {
-                return Ok(ResolvedRpc {
-                    url: chain_cfg.rpc.clone(),
-                    alias: Some(alias.to_string()),
-                    chain_id: chain_cfg.chain_id,
-                    prividium_url: chain_cfg.prividium_url.clone(),
-                    prividium_key_env: chain_cfg.prividium_key_env.clone(),
-                });
+                return Ok(ResolvedRpc::from_chain_config(chain_cfg, Some(alias)));
             }
             if let Some(legacy) = self.rpc.as_ref() {
                 let url = match alias {
@@ -192,23 +198,11 @@ impl Config {
 
         if let Some(chains) = self.chains.as_ref() {
             if let Some(chain_cfg) = chains.get("default") {
-                return Ok(ResolvedRpc {
-                    url: chain_cfg.rpc.clone(),
-                    alias: Some("default".to_string()),
-                    chain_id: chain_cfg.chain_id,
-                    prividium_url: chain_cfg.prividium_url.clone(),
-                    prividium_key_env: chain_cfg.prividium_key_env.clone(),
-                });
+                return Ok(ResolvedRpc::from_chain_config(chain_cfg, Some("default")));
             }
             if chains.len() == 1 {
                 let (alias, chain_cfg) = chains.iter().next().expect("non-empty");
-                return Ok(ResolvedRpc {
-                    url: chain_cfg.rpc.clone(),
-                    alias: Some(alias.clone()),
-                    chain_id: chain_cfg.chain_id,
-                    prividium_url: chain_cfg.prividium_url.clone(),
-                    prividium_key_env: chain_cfg.prividium_key_env.clone(),
-                });
+                return Ok(ResolvedRpc::from_chain_config(chain_cfg, Some(alias)));
             }
         }
         if let Some(default) = self.rpc.as_ref().and_then(|cfg| cfg.default.clone()) {
