@@ -230,6 +230,16 @@ pub async fn run(args: SendBatchArgs, config: Config, addresses: AddressBook) ->
         );
     }
 
+    let failed = output.results.iter().any(|r| !r.status || r.error.is_some());
+    if failed {
+        let fail_count = output
+            .results
+            .iter()
+            .filter(|r| !r.status || r.error.is_some())
+            .count();
+        anyhow::bail!("{fail_count}/{total} batch operations failed");
+    }
+
     Ok(())
 }
 
@@ -393,6 +403,14 @@ fn resolve_payload(msg: &BatchMessage) -> Result<Bytes> {
 
 fn abi_encode_call(sig: &str, args: &[serde_json::Value]) -> Result<Bytes> {
     let func = Function::parse(sig).context("invalid ABI signature")?;
+    if args.len() != func.inputs.len() {
+        anyhow::bail!(
+            "ABI argument count mismatch for {}: expected {}, got {}",
+            sig,
+            func.inputs.len(),
+            args.len()
+        );
+    }
     let tokens = func
         .inputs
         .iter()

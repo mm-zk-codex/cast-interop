@@ -68,14 +68,18 @@ pub async fn run(args: BundleTraceArgs, config: Config, addresses: AddressBook) 
         }
     };
 
-    // Step 2: Decode InteropBundleSent
+    // Step 2: Decode InteropBundleSent (select Nth matching log via msg_index)
     let mut bundle_data = None;
+    let mut match_count = 0u32;
     for log in receipt.logs() {
         if log.topics().first().copied() == Some(interop_bundle_sent_topic()) {
             match decode_interop_bundle_sent(log.data().data.clone()) {
                 Ok((_, hash, bundle)) => {
-                    bundle_data = Some((hash, bundle));
-                    break;
+                    if match_count == args.msg_index {
+                        bundle_data = Some((hash, bundle));
+                        break;
+                    }
+                    match_count += 1;
                 }
                 Err(_) => continue,
             }
