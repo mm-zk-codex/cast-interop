@@ -1,5 +1,46 @@
 # Auto relay example
 
+## Prerequisites: validate chain configuration
+
+Before starting the auto-relayer, verify that every configured chain alias has a reachable RPC
+and a correct chainId. The auto-relayer runs continuously and silently skips bundles it cannot
+relay — a misconfigured chainId is especially dangerous because it causes every relay attempt to
+fail with confusing errors rather than a clear misconfiguration message.
+
+```bash
+cast-interop chains validate
+```
+
+Example output (healthy):
+
+```
+chain: era
+  ✅ rpc_reachable: RPC reachable
+  ✅ chain_id_match: chainId 324 matches live RPC
+  ✅ zks_log_proof: zks_getL2ToL1LogProof supported
+  ✅ zks_batch_number: zks_getL1BatchNumber supported
+
+chain: test
+  ✅ rpc_reachable: RPC reachable
+  ✅ chain_id_match: chainId 325 matches live RPC
+  ✅ zks_log_proof: zks_getL2ToL1LogProof supported
+  ✅ zks_batch_number: zks_getL1BatchNumber supported
+
+2 chain(s) validated — 0 failure(s), 0 warning(s)
+```
+
+If any chain shows a `chain_id_match` failure, re-add it:
+
+```bash
+cast-interop chains rm <alias>
+cast-interop chains add <alias> --rpc <URL>
+cast-interop chains validate <alias>   # confirm fixed
+```
+
+---
+
+## Start the auto-relay
+
 Start the auto-relay UI (execute-only):
 
 ```bash

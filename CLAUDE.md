@@ -14,7 +14,7 @@ cargo build --release          # release build
 cargo run -- --help            # run via cargo
 cargo clippy                   # lint
 cargo fmt --check              # format check
-cargo test                     # run tests (currently no test suite)
+cargo test                     # run unit tests (17 tests in src/abi.rs covering decode_calldata_bytes)
 ```
 
 The binary is `cast-interop` (defined in `Cargo.toml` as `[[bin]]`).

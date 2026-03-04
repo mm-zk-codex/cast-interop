@@ -982,6 +982,119 @@ mod tests {
         assert_eq!(params_str(&d, "actual"), "500");
     }
 
+    // ── verifyBundle / executeBundle / sendBundle round-trips ────────────────
+
+    /// Build a minimal `MessageInclusionProof` with no real cryptographic content.
+    fn minimal_proof() -> MessageInclusionProof {
+        use crate::types::ProofMessage;
+        MessageInclusionProof {
+            chain_id: "324".to_string(),
+            l1_batch_number: 42,
+            l2_message_index: 7,
+            root: "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            message: ProofMessage {
+                tx_number_in_batch: 1,
+                sender: "0x0000000000000000000000000000000000000001".to_string(),
+                data: "0x".to_string(),
+            },
+            proof: vec![
+                "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            ],
+        }
+    }
+
+    /// Build a minimal `InteropBundle` with no calls.
+    fn minimal_bundle() -> InteropBundle {
+        use crate::types::{BundleAttributes, InteropCall};
+        use alloy_primitives::FixedBytes;
+        InteropBundle {
+            version: FixedBytes([0x01]),
+            sourceChainId: AlloyU256::from(324u64),
+            destinationChainId: AlloyU256::from(325u64),
+            interopBundleSalt: B256::ZERO,
+            calls: vec![InteropCall {
+                version: FixedBytes([0x01]),
+                shadowAccount: false,
+                to: Address::ZERO,
+                from: Address::ZERO,
+                value: AlloyU256::ZERO,
+                data: Bytes::default(),
+            }],
+            bundleAttributes: BundleAttributes {
+                executionAddress: Bytes::default(),
+                unbundlerAddress: Bytes::default(),
+                useFixedFee: false,
+            },
+        }
+    }
+
+    #[test]
+    fn decode_verify_bundle_call_round_trip() {
+        let bundle_bytes = encode_interop_bundle(&minimal_bundle());
+        let encoded = encode_verify_bundle_call(bundle_bytes, minimal_proof()).unwrap();
+
+        let d = decode_calldata_bytes(&encoded);
+        assert_eq!(d.kind, "function_call");
+        assert_eq!(d.name, "verifyBundle");
+        assert_eq!(d.selector, hex::encode(verifyBundleCall::SELECTOR));
+        // The inner bundle should decode to a proper object (not null)
+        assert!(
+            d.params["bundle"].is_object(),
+            "expected decoded bundle object, got: {}",
+            d.params["bundle"]
+        );
+        assert_eq!(d.params["bundle"]["sourceChainId"].as_str().unwrap(), "324");
+        assert_eq!(
+            d.params["bundle"]["destinationChainId"].as_str().unwrap(),
+            "325"
+        );
+        // Proof fields should round-trip
+        assert_eq!(d.params["proof"]["chainId"].as_str().unwrap(), "324");
+        assert_eq!(d.params["proof"]["l1BatchNumber"].as_str().unwrap(), "42");
+        assert_eq!(d.params["proof"]["l2MessageIndex"].as_str().unwrap(), "7");
+    }
+
+    #[test]
+    fn decode_execute_bundle_call_round_trip() {
+        let bundle_bytes = encode_interop_bundle(&minimal_bundle());
+        let encoded = encode_execute_bundle_call(bundle_bytes, minimal_proof()).unwrap();
+
+        let d = decode_calldata_bytes(&encoded);
+        assert_eq!(d.kind, "function_call");
+        assert_eq!(d.name, "executeBundle");
+        assert_eq!(d.selector, hex::encode(executeBundleCall::SELECTOR));
+        assert!(d.params["bundle"].is_object());
+        assert_eq!(d.params["proof"]["chainId"].as_str().unwrap(), "324");
+    }
+
+    #[test]
+    fn decode_send_bundle_call_round_trip() {
+        let starter = InteropCallStarter {
+            to: Bytes::from(vec![0x11, 0x22]),
+            data: Bytes::from(vec![0xde, 0xad]),
+            callAttributes: vec![Bytes::from(vec![0xca, 0xfe])],
+        };
+        let dest_chain = Bytes::from(vec![0x01, 0x44]);
+        let encoded = encode_send_bundle_call(dest_chain.clone(), vec![starter], vec![]).unwrap();
+
+        let d = decode_calldata_bytes(&encoded);
+        assert_eq!(d.kind, "function_call");
+        assert_eq!(d.name, "sendBundle");
+        assert_eq!(d.selector, hex::encode(sendBundleCall::SELECTOR));
+        assert_eq!(d.params["destinationChainId"].as_str().unwrap(), "0x0144");
+        let starters = d.params["callStarters"]
+            .as_array()
+            .expect("callStarters array");
+        assert_eq!(starters.len(), 1);
+        assert_eq!(starters[0]["to"].as_str().unwrap(), "0x1122");
+        assert_eq!(starters[0]["data"].as_str().unwrap(), "0xdead");
+        let attrs = starters[0]["attributes"]
+            .as_array()
+            .expect("attributes array");
+        assert_eq!(attrs.len(), 1);
+        assert_eq!(attrs[0].as_str().unwrap(), "0xcafe");
+    }
+
     // ── Selector identity — every known name maps to exactly one selector ────
 
     #[test]
