@@ -40,6 +40,10 @@ pub struct ChainConfig {
     pub rpc: String,
     #[serde(rename = "chainId")]
     pub chain_id: Option<u64>,
+    /// Mark this chain as an Ethereum L1 chain.
+    /// When true, zkSync-specific RPC methods (zks_*) are not expected and are skipped.
+    #[serde(rename = "isL1", skip_serializing_if = "Option::is_none")]
+    pub is_l1: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
@@ -65,6 +69,8 @@ pub struct ResolvedRpc {
     pub url: String,
     pub alias: Option<String>,
     pub chain_id: Option<u64>,
+    /// True when the chain is configured as an Ethereum L1 (no zks_* methods available).
+    pub is_l1: bool,
 }
 
 impl Config {
@@ -128,6 +134,7 @@ impl Config {
                 url: rpc.to_string(),
                 alias: None,
                 chain_id: None,
+                is_l1: false,
             });
         }
 
@@ -137,6 +144,7 @@ impl Config {
                     url: chain_cfg.rpc.clone(),
                     alias: Some(alias.to_string()),
                     chain_id: chain_cfg.chain_id,
+                    is_l1: chain_cfg.is_l1.unwrap_or(false),
                 });
             }
             if let Some(legacy) = self.rpc.as_ref() {
@@ -151,6 +159,7 @@ impl Config {
                         url,
                         alias: Some(alias.to_string()),
                         chain_id: None,
+                        is_l1: false,
                     });
                 }
             }
@@ -163,6 +172,7 @@ impl Config {
                     url: chain_cfg.rpc.clone(),
                     alias: Some("default".to_string()),
                     chain_id: chain_cfg.chain_id,
+                    is_l1: chain_cfg.is_l1.unwrap_or(false),
                 });
             }
             if chains.len() == 1 {
@@ -171,6 +181,7 @@ impl Config {
                     url: chain_cfg.rpc.clone(),
                     alias: Some(alias.clone()),
                     chain_id: chain_cfg.chain_id,
+                    is_l1: chain_cfg.is_l1.unwrap_or(false),
                 });
             }
         }
@@ -179,18 +190,20 @@ impl Config {
                 url: default,
                 alias: Some("default".to_string()),
                 chain_id: None,
+                is_l1: false,
             });
         }
         anyhow::bail!("no rpc configured (set --rpc or --chain, or configure a default)")
     }
 
-    pub fn set_chain(&mut self, alias: String, rpc: String, chain_id: u64) {
+    pub fn set_chain(&mut self, alias: String, rpc: String, chain_id: u64, is_l1: bool) {
         let chains = self.chains.get_or_insert_with(BTreeMap::new);
         chains.insert(
             alias,
             ChainConfig {
                 rpc,
                 chain_id: Some(chain_id),
+                is_l1: if is_l1 { Some(true) } else { None },
             },
         );
     }
@@ -222,4 +235,92 @@ fn default_config_path() -> PathBuf {
         return dir.join("cast-interop").join("config.toml");
     }
     PathBuf::from("./config.toml")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_config_with_chain(alias: &str, is_l1: bool) -> Config {
+        let mut config = Config::default();
+        config.set_chain(
+            alias.to_string(),
+            "http://localhost:8545".to_string(),
+            1,
+            is_l1,
+        );
+        config
+    }
+
+    #[test]
+    fn test_resolve_rpc_l2_chain_is_not_l1() {
+        let config = make_config_with_chain("era", false);
+        let resolved = config.resolve_rpc(None, Some("era")).unwrap();
+        assert!(!resolved.is_l1);
+        assert_eq!(resolved.url, "http://localhost:8545");
+    }
+
+    #[test]
+    fn test_resolve_rpc_l1_chain_sets_is_l1() {
+        let config = make_config_with_chain("eth", true);
+        let resolved = config.resolve_rpc(None, Some("eth")).unwrap();
+        assert!(resolved.is_l1);
+    }
+
+    #[test]
+    fn test_resolve_rpc_bare_url_is_not_l1() {
+        let config = Config::default();
+        let resolved = config
+            .resolve_rpc(Some("http://localhost:9000"), None)
+            .unwrap();
+        assert!(!resolved.is_l1);
+    }
+
+    #[test]
+    fn test_chain_config_serialization_omits_is_l1_when_false() {
+        let chain = ChainConfig {
+            rpc: "http://localhost:8545".to_string(),
+            chain_id: Some(1),
+            is_l1: None,
+        };
+        let serialized = toml::to_string(&chain).unwrap();
+        assert!(!serialized.contains("isL1"));
+    }
+
+    #[test]
+    fn test_chain_config_serialization_includes_is_l1_when_true() {
+        let chain = ChainConfig {
+            rpc: "http://localhost:8545".to_string(),
+            chain_id: Some(1),
+            is_l1: Some(true),
+        };
+        let serialized = toml::to_string(&chain).unwrap();
+        assert!(serialized.contains("isL1"));
+    }
+
+    #[test]
+    fn test_set_chain_stores_is_l1() {
+        let mut config = Config::default();
+        config.set_chain(
+            "eth".to_string(),
+            "http://localhost:8545".to_string(),
+            1,
+            true,
+        );
+        let chain = config.chain("eth").unwrap();
+        assert_eq!(chain.is_l1, Some(true));
+    }
+
+    #[test]
+    fn test_set_chain_omits_is_l1_when_false() {
+        let mut config = Config::default();
+        config.set_chain(
+            "era".to_string(),
+            "http://localhost:8545".to_string(),
+            324,
+            false,
+        );
+        let chain = config.chain("era").unwrap();
+        assert_eq!(chain.is_l1, None);
+    }
 }

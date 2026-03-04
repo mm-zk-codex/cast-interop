@@ -58,6 +58,14 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
     let source_rpc = config.resolve_rpc(args.rpc_src.as_deref(), args.chain_src.as_deref())?;
     let dest_rpc = config.resolve_rpc(args.rpc_dest.as_deref(), args.chain_dest.as_deref())?;
 
+    if source_rpc.is_l1 {
+        anyhow::bail!(
+            "L1 chains are not supported as relay sources. \
+            The interop proof flow (zks_getL2ToL1LogProof) requires an L2 source chain. \
+            Only L2→L2 and L2→L1 relay is supported."
+        );
+    }
+
     let source_client = RpcClient::new(&source_rpc.url).await?;
     let dest_client = RpcClient::new(&dest_rpc.url).await?;
 
