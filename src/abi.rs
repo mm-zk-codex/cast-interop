@@ -98,7 +98,7 @@ pub fn event_topic(signature: &str) -> B256 {
 
 pub fn interop_bundle_sent_topic() -> B256 {
     event_topic(
-        "InteropBundleSent(bytes32,bytes32,(bytes1,uint256,uint256,bytes32,(bytes1,bool,address,address,uint256,bytes)[],(bytes,bytes,bool)))",
+        "InteropBundleSent(bytes32,bytes32,(bytes1,uint256,uint256,bytes32,(bytes1,bool,address,address,uint256,bytes)[],(bytes,bytes)))",
     )
 }
 
@@ -247,7 +247,6 @@ pub fn bundle_view(bundle: &InteropBundle) -> BundleView {
         bundle_attributes: BundleAttributesView {
             execution_address: format_hex(bundle.bundleAttributes.executionAddress.as_ref()),
             unbundler_address: format_hex(bundle.bundleAttributes.unbundlerAddress.as_ref()),
-            use_fixed_fee: bundle.bundleAttributes.useFixedFee,
         },
     }
 }

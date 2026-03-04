@@ -57,6 +57,53 @@ Binary path:
 ./target/release/cast-interop --help
 ```
 
+## Docker E2E Tests
+
+The repository includes a local-first E2E harness for real CLI tests against:
+
+- one Anvil container loading the pinned multi-chain L1 state
+- two `zksync-os-server` containers for chains `6565` and `6566`
+
+The harness pins `zksync-os-server` to `v0.16.0` and uses the official image
+`ghcr.io/matter-labs/zksync-os-server:v0.16.0` by default.
+For Anvil, it uses `ghcr.io/foundry-rs/foundry:v1.5.1`, which matches the upstream local setup
+documentation for the saved L1 state format.
+
+Prerequisites:
+
+- Docker with `docker compose`
+- `cargo`
+- `bash`
+- `curl`
+- `python3`
+
+Run the first covered flow:
+
+```bash
+bash scripts/test-e2e.sh --flow bundle-relay
+```
+
+Useful options:
+
+```bash
+# Keep the stack running for manual inspection
+bash scripts/test-e2e.sh --flow bundle-relay --keep-running
+
+# Override the upstream server tag
+bash scripts/test-e2e.sh --flow bundle-relay --server-tag v0.16.0
+```
+
+The E2E tests live in `tests/bundle_relay.rs` and are marked `#[ignore]` so they only run through
+the harness. On failure, the script preserves container logs and extracted runtime assets in a temp
+directory and prints that path before exit.
+
+Current default coverage for the first `bundle relay` slice:
+
+- stack bootstrap and CLI JSON shape smoke checks
+- a successful end-to-end `bundle relay` that deploys the `Greet` fixture on chain B, sends a
+  cross-chain `setGreeting(string)` call from chain A, and verifies the destination state change
+- a controlled `bundle relay` failure path (`transaction receipt not found`)
+
 ## Configuration
 
 Config file location:

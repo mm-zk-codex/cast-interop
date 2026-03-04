@@ -105,11 +105,14 @@ pub async fn run_message(
         .with_chain_id(chain_id)
         .connect(&resolved.url)
         .await?;
+    let max_fee_per_gas = client.provider.get_gas_price().await?;
 
     let request = TransactionRequest {
         to: Some(addresses.interop_center.into()),
         input: TransactionInput::new(calldata),
         value: Some(msg_value),
+        max_fee_per_gas: Some(max_fee_per_gas),
+        max_priority_fee_per_gas: Some(0),
         ..Default::default()
     };
 
@@ -197,11 +200,14 @@ pub async fn run_bundle(
         .with_chain_id(chain_id)
         .connect(&resolved.url)
         .await?;
+    let max_fee_per_gas = client.provider.get_gas_price().await?;
 
     let request = TransactionRequest {
         to: Some(addresses.interop_center.into()),
         input: TransactionInput::new(calldata),
         value: Some(total_value),
+        max_fee_per_gas: Some(max_fee_per_gas),
+        max_priority_fee_per_gas: Some(0),
         ..Default::default()
     };
 

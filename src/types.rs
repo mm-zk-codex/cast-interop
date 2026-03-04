@@ -112,7 +112,6 @@ pub struct InteropCallView {
 pub struct BundleAttributesView {
     pub execution_address: String,
     pub unbundler_address: String,
-    pub use_fixed_fee: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -192,7 +191,6 @@ alloy_sol_types::sol! {
     struct BundleAttributes {
         bytes executionAddress;
         bytes unbundlerAddress;
-        bool useFixedFee;
     }
 
     struct InteropBundle {
