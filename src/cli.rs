@@ -227,6 +227,11 @@ pub enum BundleSubcommand {
         long_about = "Fetch proof from source, wait for root, and verify/execute on destination.\nUse this to automate the full relay flow.\nExample: cast-interop bundle relay --chain-src era --chain-dest test --tx 0xTX_HASH --mode execute --private-key $PRIVATE_KEY"
     )]
     Relay(RelayArgs),
+    #[command(
+        about = "Scan recent blocks for interop bundles.",
+        long_about = "Query eth_getLogs for InteropBundleSent events emitted by the InteropCenter contract.\nUse this to discover pending bundles without knowing a specific transaction hash.\nExample: cast-interop bundle scan --chain era --lookback 500 --dest-chain-id 300"
+    )]
+    Scan(BundleScanArgs),
 }
 
 impl BundleCommand {
@@ -247,6 +252,9 @@ impl BundleCommand {
                 commands::explain::run(args, config, addresses).await
             }
             BundleSubcommand::Relay(args) => commands::relay::run(args, config, addresses).await,
+            BundleSubcommand::Scan(args) => {
+                commands::bundle_scan::run(args, config, addresses).await
+            }
         }
     }
 }
@@ -558,6 +566,48 @@ pub struct BundleExtractArgs {
         help = "Write the JSON bundle view to a file. Default: unset."
     )]
     pub json_out: Option<PathBuf>,
+
+    #[arg(long, help = "Emit JSON output. Default: false.")]
+    pub json: bool,
+}
+
+/// Scan recent blocks for InteropBundleSent events.
+#[derive(Args, Debug)]
+pub struct BundleScanArgs {
+    #[command(flatten)]
+    pub rpc: RpcSelectionArgs,
+
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 200,
+        help = "Number of blocks to look back from latest. Default: 200."
+    )]
+    pub lookback: u64,
+
+    #[arg(
+        long,
+        value_name = "BLOCK",
+        help = "Start scanning from this block number. Overrides --lookback."
+    )]
+    pub from_block: Option<u64>,
+
+    #[arg(
+        long,
+        value_name = "BLOCK",
+        help = "Stop scanning at this block number. Default: latest."
+    )]
+    pub to_block: Option<u64>,
+
+    #[arg(
+        long,
+        value_name = "CHAIN_ID",
+        help = "Filter results to bundles destined for this chain ID."
+    )]
+    pub dest_chain_id: Option<String>,
+
+    #[arg(long, help = "Print progress info to stderr. Default: false.")]
+    pub verbose: bool,
 
     #[arg(long, help = "Emit JSON output. Default: false.")]
     pub json: bool,
