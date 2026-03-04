@@ -1,7 +1,10 @@
 use alloy_primitives::{Address, Bytes, B256};
-use alloy_provider::{DynProvider, Provider, ProviderBuilder};
+use alloy_provider::{DynProvider, Provider, ProviderBuilder, RootProvider};
+use alloy_rpc_client::RpcClient as AlloyRpcClient;
 use alloy_rpc_types::{BlockNumberOrTag, TransactionInput, TransactionReceipt, TransactionRequest};
+use alloy_transport_http::Http;
 use anyhow::{anyhow, Context, Result};
+use reqwest::header::{HeaderValue, AUTHORIZATION};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -17,14 +20,39 @@ pub struct RpcClient {
 }
 
 impl RpcClient {
+    /// Create a plain (unauthenticated) RPC client.
     pub async fn new(url: &str) -> Result<Self> {
         let http = Client::new();
-
         let provider = ProviderBuilder::new().connect(url).await?;
-
         Ok(Self {
             url: url.to_string(),
             provider: provider.erased(),
+            http,
+        })
+    }
+
+    /// Create an RPC client that injects `Authorization: Bearer <token>` on
+    /// every request — both for alloy provider calls and raw JSON-RPC calls.
+    pub fn new_with_auth(url: &str, bearer_token: &str) -> Result<Self> {
+        let auth_value = HeaderValue::from_str(&format!("Bearer {bearer_token}"))
+            .context("invalid bearer token for Authorization header")?;
+
+        let mut default_headers = reqwest::header::HeaderMap::new();
+        default_headers.insert(AUTHORIZATION, auth_value);
+
+        let http = Client::builder()
+            .default_headers(default_headers)
+            .build()
+            .context("failed to build authenticated reqwest client")?;
+
+        let parsed_url: url::Url = url.parse().context("invalid RPC URL")?;
+        let transport = Http::with_client(http.clone(), parsed_url);
+        let rpc_client = AlloyRpcClient::new(transport, false);
+        let provider = RootProvider::new(rpc_client).erased();
+
+        Ok(Self {
+            url: url.to_string(),
+            provider,
             http,
         })
     }

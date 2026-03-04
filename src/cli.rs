@@ -840,6 +840,22 @@ pub struct ChainsAddArgs {
 
     #[arg(long, value_name = "RPC_URL", help = "RPC URL for the chain.")]
     pub rpc: String,
+
+    #[arg(
+        long,
+        value_name = "URL",
+        help = "Prividium API base URL (e.g. https://permissions.example.com). \
+                When set, the CLI authenticates via SIWE before RPC requests."
+    )]
+    pub prividium_url: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "ENV",
+        help = "Environment variable holding the Prividium auth private key. \
+                Default: PRIVIDIUM_PRIVATE_KEY."
+    )]
+    pub prividium_key_env: Option<String>,
 }
 
 /// Remove a chain alias.

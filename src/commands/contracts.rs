@@ -23,7 +23,7 @@ struct ContractRow {
 /// Reports deployed bytecode length and ABI availability.
 pub async fn run(args: ContractsArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
-    let client = RpcClient::new(&resolved.url).await?;
+    let client = resolved.to_rpc_client().await?;
 
     let abi_dir = config.abi_dir();
     let mut rows = Vec::new();

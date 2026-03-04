@@ -3,7 +3,7 @@ use crate::abi::{
 };
 use crate::cli::StatusArgs;
 use crate::config::Config;
-use crate::rpc::{eth_call, RpcClient};
+use crate::rpc::eth_call;
 use crate::types::{bytes_from_hex, parse_b256, AddressBook, CallStatusView, StatusOutput};
 use alloy_primitives::U256;
 use alloy_sol_types::SolValue;
@@ -14,7 +14,7 @@ use anyhow::Result;
 /// Use this to verify whether a bundle has been verified or executed.
 pub async fn run(args: StatusArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
-    let client = RpcClient::new(&resolved.url).await?;
+    let client = resolved.to_rpc_client().await?;
     let bundle_hash = parse_b256(&args.bundle_hash)?;
     let call = encode_bundle_status_call(bundle_hash);
     let result = eth_call(&client, addresses.interop_handler, call).await?;

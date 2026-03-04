@@ -1,6 +1,5 @@
 use crate::cli::{ChainsAddArgs, ChainsListArgs, ChainsRemoveArgs};
-use crate::config::{ChainConfig, Config};
-use crate::rpc::RpcClient;
+use crate::config::{ChainConfig, Config, ResolvedRpc};
 use crate::types::AddressBook;
 use alloy_provider::Provider;
 use anyhow::{anyhow, Context, Result};
@@ -13,6 +12,8 @@ struct ChainListItem {
     alias: String,
     rpc: String,
     chain_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prividium_url: Option<String>,
 }
 
 /// List configured chain aliases and their RPC URLs.
@@ -25,11 +26,17 @@ pub async fn run_list(args: ChainsListArgs, config: Config, _addresses: AddressB
     }
 
     for (alias, cfg) in chains {
-        let chain_id = probe_chain_id(&cfg).await.ok().or(cfg.chain_id);
+        // Use the cached chain_id if available; only probe if missing.
+        let chain_id = if cfg.chain_id.is_some() {
+            cfg.chain_id
+        } else {
+            probe_chain_id(&cfg).await.ok()
+        };
         items.push(ChainListItem {
             alias,
             rpc: redact_url(&cfg.rpc),
             chain_id: chain_id.map(|id| id.to_string()),
+            prividium_url: cfg.prividium_url.clone(),
         });
     }
 
@@ -43,10 +50,11 @@ pub async fn run_list(args: ChainsListArgs, config: Config, _addresses: AddressB
         return Ok(());
     }
 
-    println!("{:<12} {:<10} {}", "alias", "chainId", "rpc");
+    println!("{:<12} {:<10} {:<8} {}", "alias", "chainId", "prividium", "rpc");
     for item in items {
         let chain_id = item.chain_id.unwrap_or_else(|| "unknown".to_string());
-        println!("{:<12} {:<10} {}", item.alias, chain_id, item.rpc);
+        let prividium = if item.prividium_url.is_some() { "yes" } else { "no" };
+        println!("{:<12} {:<10} {:<8} {}", item.alias, chain_id, prividium, item.rpc);
     }
 
     Ok(())
@@ -59,7 +67,18 @@ pub async fn run_add(
     _addresses: AddressBook,
 ) -> Result<()> {
     let rpc = args.rpc.trim();
-    let client = RpcClient::new(rpc).await?;
+
+    // Build a temporary ResolvedRpc so we can use the shared auth logic to
+    // probe the chain ID (important when adding a Prividium chain).
+    let resolved = ResolvedRpc {
+        url: rpc.to_string(),
+        alias: None,
+        chain_id: None,
+        prividium_url: args.prividium_url.clone(),
+        prividium_key_env: args.prividium_key_env.clone(),
+    };
+
+    let client = resolved.to_rpc_client().await?;
     let chain_id = client
         .provider
         .get_chain_id()
@@ -67,7 +86,15 @@ pub async fn run_add(
         .context("failed to fetch eth_chainId")?;
     let chain_id = u64::try_from(chain_id).map_err(|_| anyhow!("chainId too large"))?;
 
-    config.set_chain(args.alias.clone(), rpc.to_string(), chain_id);
+    config.set_chain(
+        args.alias.clone(),
+        ChainConfig {
+            rpc: rpc.to_string(),
+            chain_id: Some(chain_id),
+            prividium_url: args.prividium_url,
+            prividium_key_env: args.prividium_key_env,
+        },
+    );
     config.save()?;
 
     println!(
@@ -101,6 +128,8 @@ fn legacy_chains(config: &Config) -> BTreeMap<String, ChainConfig> {
                 ChainConfig {
                     rpc: url.clone(),
                     chain_id: None,
+                    prividium_url: None,
+                    prividium_key_env: None,
                 },
             );
         }
@@ -110,6 +139,8 @@ fn legacy_chains(config: &Config) -> BTreeMap<String, ChainConfig> {
                 ChainConfig {
                     rpc: url.clone(),
                     chain_id: None,
+                    prividium_url: None,
+                    prividium_key_env: None,
                 },
             );
         }
@@ -119,6 +150,8 @@ fn legacy_chains(config: &Config) -> BTreeMap<String, ChainConfig> {
                 ChainConfig {
                     rpc: url.clone(),
                     chain_id: None,
+                    prividium_url: None,
+                    prividium_key_env: None,
                 },
             );
         }
@@ -126,9 +159,17 @@ fn legacy_chains(config: &Config) -> BTreeMap<String, ChainConfig> {
     map
 }
 
-/// Probe the chain ID from an RPC URL for display purposes.
+/// Probe the chain ID from a ChainConfig for display purposes.
+/// Uses Prividium auth if the chain has it configured.
 async fn probe_chain_id(cfg: &ChainConfig) -> Result<u64> {
-    let client = RpcClient::new(&cfg.rpc).await?;
+    let resolved = ResolvedRpc {
+        url: cfg.rpc.clone(),
+        alias: None,
+        chain_id: None,
+        prividium_url: cfg.prividium_url.clone(),
+        prividium_key_env: cfg.prividium_key_env.clone(),
+    };
+    let client = resolved.to_rpc_client().await?;
     let chain = client.provider.get_chain_id().await?;
     Ok(chain)
 }

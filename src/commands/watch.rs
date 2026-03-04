@@ -1,9 +1,7 @@
 use crate::abi::{decode_bundle_status, encode_bundle_status_call, encode_interop_roots_call};
 use crate::cli::WatchArgs;
 use crate::config::Config;
-use crate::rpc::{
-    eth_call, get_finalized_block_number, get_log_proof, get_transaction_receipt, RpcClient,
-};
+use crate::rpc::{eth_call, get_finalized_block_number, get_log_proof, get_transaction_receipt, RpcClient};
 use crate::types::{parse_b256, AddressBook};
 use alloy_primitives::{B256, U256};
 use alloy_provider::Provider;
@@ -24,8 +22,8 @@ struct WatchEvent {
 pub async fn run(args: WatchArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let src_rpc = config.resolve_rpc(args.rpc_src.as_deref(), args.chain_src.as_deref())?;
     let dest_rpc = config.resolve_rpc(args.rpc_dest.as_deref(), args.chain_dest.as_deref())?;
-    let source_client = RpcClient::new(&src_rpc.url).await?;
-    let dest_client = RpcClient::new(&dest_rpc.url).await?;
+    let (source_client, dest_client) =
+        tokio::try_join!(src_rpc.to_rpc_client(), dest_rpc.to_rpc_client())?;
 
     let tx_hash = parse_b256(&args.tx)?;
     let receipt = get_transaction_receipt(&source_client, tx_hash).await?;

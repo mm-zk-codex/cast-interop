@@ -40,6 +40,14 @@ pub struct ChainConfig {
     pub rpc: String,
     #[serde(rename = "chainId")]
     pub chain_id: Option<u64>,
+    /// Base URL of the Prividium permissions API (e.g. `https://permissions.example.com`).
+    /// When set, the CLI authenticates via SIWE before making RPC requests.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prividium_url: Option<String>,
+    /// Name of the environment variable holding the Prividium auth private key.
+    /// Defaults to `PRIVIDIUM_PRIVATE_KEY` when `prividium_url` is set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prividium_key_env: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
@@ -60,11 +68,30 @@ pub struct SignerConfig {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ResolvedRpc {
     pub url: String,
     pub alias: Option<String>,
     pub chain_id: Option<u64>,
+    /// Set when the chain requires Prividium authentication.
+    pub prividium_url: Option<String>,
+    pub prividium_key_env: Option<String>,
+}
+
+impl ResolvedRpc {
+    /// Build an [`crate::rpc::RpcClient`] for this endpoint.
+    ///
+    /// If the chain has a `prividium_url`, performs SIWE authentication first
+    /// and injects the resulting bearer token as an `Authorization` header.
+    /// Otherwise returns a plain unauthenticated client.
+    pub async fn to_rpc_client(&self) -> Result<crate::rpc::RpcClient> {
+        if let Some(prividium_url) = &self.prividium_url {
+            let key = crate::prividium::resolve_private_key(None, self.prividium_key_env.as_deref())?;
+            let session = crate::prividium::authenticate(prividium_url, &key).await?;
+            crate::rpc::RpcClient::new_with_auth(&self.url, &session.token)
+        } else {
+            crate::rpc::RpcClient::new(&self.url).await
+        }
+    }
 }
 
 impl Config {
@@ -128,6 +155,8 @@ impl Config {
                 url: rpc.to_string(),
                 alias: None,
                 chain_id: None,
+                prividium_url: None,
+                prividium_key_env: None,
             });
         }
 
@@ -137,6 +166,8 @@ impl Config {
                     url: chain_cfg.rpc.clone(),
                     alias: Some(alias.to_string()),
                     chain_id: chain_cfg.chain_id,
+                    prividium_url: chain_cfg.prividium_url.clone(),
+                    prividium_key_env: chain_cfg.prividium_key_env.clone(),
                 });
             }
             if let Some(legacy) = self.rpc.as_ref() {
@@ -151,6 +182,8 @@ impl Config {
                         url,
                         alias: Some(alias.to_string()),
                         chain_id: None,
+                        prividium_url: None,
+                        prividium_key_env: None,
                     });
                 }
             }
@@ -163,6 +196,8 @@ impl Config {
                     url: chain_cfg.rpc.clone(),
                     alias: Some("default".to_string()),
                     chain_id: chain_cfg.chain_id,
+                    prividium_url: chain_cfg.prividium_url.clone(),
+                    prividium_key_env: chain_cfg.prividium_key_env.clone(),
                 });
             }
             if chains.len() == 1 {
@@ -171,6 +206,8 @@ impl Config {
                     url: chain_cfg.rpc.clone(),
                     alias: Some(alias.clone()),
                     chain_id: chain_cfg.chain_id,
+                    prividium_url: chain_cfg.prividium_url.clone(),
+                    prividium_key_env: chain_cfg.prividium_key_env.clone(),
                 });
             }
         }
@@ -179,20 +216,17 @@ impl Config {
                 url: default,
                 alias: Some("default".to_string()),
                 chain_id: None,
+                prividium_url: None,
+                prividium_key_env: None,
             });
         }
         anyhow::bail!("no rpc configured (set --rpc or --chain, or configure a default)")
     }
 
-    pub fn set_chain(&mut self, alias: String, rpc: String, chain_id: u64) {
-        let chains = self.chains.get_or_insert_with(BTreeMap::new);
-        chains.insert(
-            alias,
-            ChainConfig {
-                rpc,
-                chain_id: Some(chain_id),
-            },
-        );
+    pub fn set_chain(&mut self, alias: String, cfg: ChainConfig) {
+        self.chains
+            .get_or_insert_with(BTreeMap::new)
+            .insert(alias, cfg);
     }
 
     pub fn remove_chain(&mut self, alias: &str) -> bool {

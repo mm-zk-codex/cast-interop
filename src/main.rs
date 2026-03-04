@@ -3,6 +3,7 @@ mod cli;
 mod commands;
 mod config;
 mod encode;
+mod prividium;
 mod relay_flow;
 mod rpc;
 mod signer;

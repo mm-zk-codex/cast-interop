@@ -6,7 +6,7 @@ use crate::cli::RelayArgs;
 use crate::commands::bundle_action::decode_send_transaction;
 use crate::config::Config;
 use crate::relay_flow::{build_message_proof, wait_for_proof, wait_for_root};
-use crate::rpc::{eth_call, get_transaction_receipt, RpcClient};
+use crate::rpc::{eth_call, get_transaction_receipt};
 use crate::signer::{load_signer, SignerOptions};
 use crate::types::{
     format_hex, require_signer_or_dry_run, AddressBook, MessageInclusionProof, RelaySummary,
@@ -58,8 +58,8 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
     let source_rpc = config.resolve_rpc(args.rpc_src.as_deref(), args.chain_src.as_deref())?;
     let dest_rpc = config.resolve_rpc(args.rpc_dest.as_deref(), args.chain_dest.as_deref())?;
 
-    let source_client = RpcClient::new(&source_rpc.url).await?;
-    let dest_client = RpcClient::new(&dest_rpc.url).await?;
+    let (source_client, dest_client) =
+        tokio::try_join!(source_rpc.to_rpc_client(), dest_rpc.to_rpc_client())?;
 
     let tx_hash =
         B256::from_str(&args.tx).with_context(|| format!("invalid tx hash {}", args.tx))?;

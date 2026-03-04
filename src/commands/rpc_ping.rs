@@ -1,6 +1,6 @@
 use crate::cli::RpcPingArgs;
 use crate::config::Config;
-use crate::rpc::{get_finalized_block_number, raw_rpc, RpcClient};
+use crate::rpc::{get_finalized_block_number, raw_rpc};
 use crate::types::AddressBook;
 use alloy_provider::Provider;
 use anyhow::Result;
@@ -21,7 +21,7 @@ struct RpcPingOutput {
 /// Reports chain ID, latest/finalized blocks, and client version.
 pub async fn run(args: RpcPingArgs, config: Config, _addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
-    let client = RpcClient::new(&resolved.url).await?;
+    let client = resolved.to_rpc_client().await?;
 
     let chain_id = client
         .provider
