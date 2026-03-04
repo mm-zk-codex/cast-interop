@@ -1,7 +1,7 @@
 use crate::abi::{decode_bytes32, encode_interop_roots_call};
 use crate::cli::RootWaitArgs;
 use crate::config::Config;
-use crate::rpc::{eth_call, RpcClient};
+use crate::rpc::eth_call;
 use crate::types::{parse_b256, parse_u256, AddressBook};
 use alloy_primitives::{B256, U256};
 use anyhow::Result;
@@ -12,7 +12,7 @@ use std::time::Duration;
 /// Polls interopRoots(chainId, batchNumber) until timeout or match.
 pub async fn run(args: RootWaitArgs, config: Config, addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
-    let client = RpcClient::new(&resolved.url).await?;
+    let client = resolved.to_rpc_client().await?;
     let chain_id = parse_u256(&args.source_chain)?;
     let expected_root = args.expected_root.as_ref().map(|x| parse_b256(x).unwrap());
     let timeout = Duration::from_millis(args.timeout_ms.unwrap_or(300_000));

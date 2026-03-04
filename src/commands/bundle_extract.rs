@@ -1,7 +1,7 @@
 use crate::abi::{decode_interop_bundle_sent, encode_interop_bundle, interop_bundle_sent_topic};
 use crate::cli::BundleExtractArgs;
 use crate::config::Config;
-use crate::rpc::{get_transaction_receipt, RpcClient};
+use crate::rpc::get_transaction_receipt;
 use crate::types::{format_hex, AddressBook, BundleExtractOutput};
 use alloy_primitives::B256;
 use anyhow::{Context, Result};
@@ -13,7 +13,7 @@ use std::str::FromStr;
 /// Scans for InteropBundleSent logs and prints/writes the encoded bundle.
 pub async fn run(args: BundleExtractArgs, config: Config, _addresses: AddressBook) -> Result<()> {
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
-    let client = RpcClient::new(&resolved.url).await?;
+    let client = resolved.to_rpc_client().await?;
     let tx_hash =
         B256::from_str(&args.tx).with_context(|| format!("invalid tx hash {}", args.tx))?;
     let receipt = get_transaction_receipt(&client, tx_hash).await?;

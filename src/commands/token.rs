@@ -76,8 +76,8 @@ struct TokenBalanceOutput {
 pub async fn run_info(args: TokenInfoArgs, config: Config, _addresses: AddressBook) -> Result<()> {
     let src_rpc = config.resolve_rpc(args.rpc_src.as_deref(), args.chain_src.as_deref())?;
     let dest_rpc = config.resolve_rpc(args.rpc_dest.as_deref(), args.chain_dest.as_deref())?;
-    let src_client = RpcClient::new(&src_rpc.url).await?;
-    let dest_client = RpcClient::new(&dest_rpc.url).await?;
+    let (src_client, dest_client) =
+        tokio::try_join!(src_rpc.to_rpc_client(), dest_rpc.to_rpc_client())?;
 
     let src_chain_id = src_client.provider.get_chain_id().await?;
     let dest_chain_id = dest_client.provider.get_chain_id().await?;
@@ -151,8 +151,8 @@ pub async fn run_balance(
 ) -> Result<()> {
     let src_rpc = config.resolve_rpc(args.rpc_src.as_deref(), args.chain_src.as_deref())?;
     let dest_rpc = config.resolve_rpc(args.rpc_dest.as_deref(), args.chain_dest.as_deref())?;
-    let src_client = RpcClient::new(&src_rpc.url).await?;
-    let dest_client = RpcClient::new(&dest_rpc.url).await?;
+    let (src_client, dest_client) =
+        tokio::try_join!(src_rpc.to_rpc_client(), dest_rpc.to_rpc_client())?;
 
     let src_chain_id = src_client.provider.get_chain_id().await?;
     let dest_chain_id = dest_client.provider.get_chain_id().await?;
@@ -232,8 +232,8 @@ pub async fn run_send(args: TokenSendArgs, config: Config, addresses: AddressBoo
     let src_rpc = config.resolve_rpc(args.rpc_src.as_deref(), args.chain_src.as_deref())?;
     let dest_rpc = config.resolve_rpc(args.rpc_dest.as_deref(), args.chain_dest.as_deref())?;
 
-    let source_client = RpcClient::new(&src_rpc.url).await?;
-    let dest_client = RpcClient::new(&dest_rpc.url).await?;
+    let (source_client, dest_client) =
+        tokio::try_join!(src_rpc.to_rpc_client(), dest_rpc.to_rpc_client())?;
 
     let src_chain_id = source_client.provider.get_chain_id().await?;
     let dest_chain_id = dest_client.provider.get_chain_id().await?;

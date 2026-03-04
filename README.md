@@ -81,9 +81,10 @@ cast-interop chains list
 Example output:
 
 ```
-alias        chainId    rpc
-era          324        https://mainnet.era.zksync.io
-test         300        https://sepolia.era.zksync.dev
+alias        chainId    prividium rpc
+era          324        no        https://mainnet.era.zksync.io
+test         300        no        https://sepolia.era.zksync.dev
+mypriv       270        yes       https://permissions.example.com/rpc
 ```
 
 You can still use the legacy `[rpc]` config for backwards compatibility:
@@ -119,6 +120,25 @@ Signer flags (required for sending transactions unless using `--dry-run`):
 
 * `--private-key <hex>`
 * `--private-key-env <ENV>` (default: `PRIVATE_KEY`)
+
+## Prividium Support
+
+[Prividium](https://github.com/mm-zk-codex) chains require SIWE authentication before RPC requests. The CLI handles this automatically — register a chain alias once and all subsequent commands authenticate transparently.
+
+```bash
+# Register a Prividium chain
+cast-interop chains add mychain \
+  --rpc https://permissions.example.com/rpc \
+  --prividium-url https://permissions.example.com \
+  --prividium-key-env PRIVIDIUM_PRIVATE_KEY
+
+export PRIVIDIUM_PRIVATE_KEY=0xYourPrivateKeyHex
+
+# All commands then work normally
+cast-interop bundle relay --chain-src mychain --chain-dest test --tx 0xSOURCE_TX_HASH --private-key $PRIVATE_KEY
+```
+
+See [docs/prividium.md](docs/prividium.md) for full setup, config format, auth flow details, and error reference.
 
 ## Core workflows
 

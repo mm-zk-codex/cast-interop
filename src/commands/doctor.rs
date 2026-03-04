@@ -23,7 +23,7 @@ pub async fn run(args: DoctorArgs, config: Config, addresses: AddressBook) -> Re
     let resolved = config.resolve_rpc(args.rpc.rpc.as_deref(), args.rpc.chain.as_deref())?;
 
     let mut checks = Vec::new();
-    let client = match RpcClient::new(&resolved.url).await {
+    let client = match resolved.to_rpc_client().await {
         Ok(client) => {
             checks.push(DoctorCheck {
                 name: "rpc_reachable".to_string(),
