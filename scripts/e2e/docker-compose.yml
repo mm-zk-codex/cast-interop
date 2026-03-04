@@ -1,0 +1,42 @@
+services:
+  anvil:
+    image: ${ANVIL_IMAGE}
+    entrypoint:
+      - anvil
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "${ANVIL_PORT}"
+      - --load-state
+      - /work/l1-state.json
+    volumes:
+      - ${E2E_ANVIL_DIR}:/work:ro
+    ports:
+      - "${ANVIL_PORT}:${ANVIL_PORT}"
+
+  zksync-a:
+    image: ${ZKSYNC_OS_SERVER_IMAGE}
+    working_dir: /work
+    command:
+      - --config
+      - /work/chain_6565.yaml
+    volumes:
+      - ${E2E_CHAIN_A_DIR}:/work
+    ports:
+      - "${RPC_A_PORT}:${RPC_A_PORT}"
+    depends_on:
+      - anvil
+
+  zksync-b:
+    image: ${ZKSYNC_OS_SERVER_IMAGE}
+    working_dir: /work
+    command:
+      - --config
+      - /work/chain_6566.yaml
+    volumes:
+      - ${E2E_CHAIN_B_DIR}:/work
+    ports:
+      - "${RPC_B_PORT}:${RPC_B_PORT}"
+    depends_on:
+      - anvil

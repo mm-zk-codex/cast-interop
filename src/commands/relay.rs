@@ -134,9 +134,12 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
             .with_chain_id(chain_id)
             .connect(&dest_rpc.url)
             .await?;
+        let max_fee_per_gas = dest_client.provider.get_gas_price().await?;
         let request = alloy_rpc_types::TransactionRequest {
             to: Some(alloy_primitives::TxKind::Call(handler)),
             input: alloy_rpc_types::TransactionInput::new(calldata),
+            max_fee_per_gas: Some(max_fee_per_gas),
+            max_priority_fee_per_gas: Some(0),
             ..Default::default()
         };
 
