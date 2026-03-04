@@ -147,17 +147,24 @@ pub async fn run(args: SendBatchArgs, config: Config, addresses: AddressBook) ->
                 send_id,
                 receipt,
             }) => {
-                sent_count += 1;
+                let tx_status = receipt.status();
+                if tx_status {
+                    sent_count += 1;
+                }
                 let mut entry = BatchResultEntry {
                     index: idx,
                     tx_hash: Some(format!("{tx_hash:#x}")),
-                    status: true,
+                    status: tx_status,
                     send_id: send_id.map(|id| format!("{id:#x}")),
                     relay_tx_hash: None,
-                    error: None,
+                    error: if tx_status {
+                        None
+                    } else {
+                        Some("transaction reverted".into())
+                    },
                 };
 
-                if args.relay {
+                if args.relay && tx_status {
                     if let (Some(dest_client), Some(dest_url)) =
                         (&dest_client, &dest_rpc_url)
                     {
