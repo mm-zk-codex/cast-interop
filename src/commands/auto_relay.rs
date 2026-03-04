@@ -1,9 +1,9 @@
 use crate::abi::{decode_interop_bundle_sent, interop_bundle_sent_topic, l1_message_sent_topic};
-use crate::types::L1_SENDER_ADDRESS;
 use crate::cli::AutoRelayArgs;
 use crate::config::Config;
 use crate::relay_flow::{build_message_proof, execute_bundle, wait_for_proof, wait_for_root};
 use crate::rpc::{get_transaction_receipt, RpcClient};
+use crate::types::L1_SENDER_ADDRESS;
 use crate::types::{AddressBook, MessageInclusionProof};
 use alloy_primitives::{Address, Bytes, B256, U256};
 use alloy_provider::Provider;
@@ -190,6 +190,7 @@ pub async fn run(args: AutoRelayArgs, _config: Config, addresses: AddressBook) -
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn chain_poll_loop(
     index: usize,
     chain: ChainRuntime,
@@ -265,10 +266,7 @@ async fn scan_block(
 
     let tx_hashes: Vec<B256> = match block.transactions {
         BlockTransactions::Hashes(hashes) => hashes,
-        BlockTransactions::Full(txs) => txs
-            .into_iter()
-            .map(|tx| tx.into_inner().hash().clone())
-            .collect(),
+        BlockTransactions::Full(txs) => txs.into_iter().map(|tx| *tx.into_inner().hash()).collect(),
         _ => Vec::new(),
     };
 
@@ -412,6 +410,7 @@ fn insert_job(state: &Arc<Mutex<AppState>>, detected: DetectedJob) -> Result<()>
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn job_processor_loop(
     state: Arc<Mutex<AppState>>,
     chains: Vec<ChainRuntime>,
@@ -476,6 +475,7 @@ async fn job_processor_loop(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn process_job(
     state: &Arc<Mutex<AppState>>,
     chains: &[ChainRuntime],
@@ -510,9 +510,16 @@ async fn process_job(
         JobStage::Detected | JobStage::WaitingProof => {
             update_job_stage(state, job_key, JobStage::WaitingProof);
             let _permit = semaphore.acquire_owned().await?;
-            let proof = wait_for_proof(&source.client, block_number, tx_hash, msg_index, timeout, poll)
-                .await
-                .context("proof wait failed")?;
+            let proof = wait_for_proof(
+                &source.client,
+                block_number,
+                tx_hash,
+                msg_index,
+                timeout,
+                poll,
+            )
+            .await
+            .context("proof wait failed")?;
             eprintln!(
                 "proof ready {:#x} batch={} id={}",
                 tx_hash, proof.batch_number, proof.id

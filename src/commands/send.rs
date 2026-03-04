@@ -115,7 +115,7 @@ pub async fn run_message(
 
     let pending = decode_send_transaction(provider.send_transaction(request).await)?;
 
-    let tx_hash = pending.tx_hash().clone();
+    let tx_hash = *pending.tx_hash();
     let receipt = pending.get_receipt().await?;
 
     let send_id = extract_send_id(receipt.logs(), addresses.interop_center);
@@ -207,7 +207,7 @@ pub async fn run_bundle(
 
     let pending = decode_send_transaction(provider.send_transaction(request).await)?;
 
-    let tx_hash = pending.tx_hash().clone();
+    let tx_hash = *pending.tx_hash();
     let receipt = pending.get_receipt().await?;
 
     let bundle_hash = extract_bundle_hash(receipt.logs(), addresses.interop_center);

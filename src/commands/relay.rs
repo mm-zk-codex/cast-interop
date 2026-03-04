@@ -26,21 +26,21 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
     let handler = args
         .handler
         .as_deref()
-        .map(|value| Address::from_str(value))
+        .map(Address::from_str)
         .transpose()
         .context("invalid handler address")?
         .unwrap_or(addresses.interop_handler);
     let center = args
         .center
         .as_deref()
-        .map(|value| Address::from_str(value))
+        .map(Address::from_str)
         .transpose()
         .context("invalid center address")?
         .unwrap_or(addresses.interop_center);
     let root_storage = args
         .root_storage
         .as_deref()
-        .map(|value| Address::from_str(value))
+        .map(Address::from_str)
         .transpose()
         .context("invalid root storage address")?
         .unwrap_or(addresses.interop_root_storage);

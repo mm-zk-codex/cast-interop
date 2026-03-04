@@ -92,12 +92,7 @@ pub async fn run(args: DoctorArgs, config: Config, addresses: AddressBook) -> Re
         }),
         Err(err) => {
             let message = err.to_string();
-            let status =
-                if message.contains("Method not found") || message.contains("method not found") {
-                    "warn"
-                } else {
-                    "warn"
-                };
+            let status = "warn";
             checks.push(DoctorCheck {
                 name: "get_log_proof".to_string(),
                 status: status.to_string(),

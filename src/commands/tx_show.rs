@@ -31,7 +31,7 @@ pub async fn run(args: TxShowArgs, config: Config, _addresses: AddressBook) -> R
     let mut events = Vec::new();
 
     for log in receipt.logs() {
-        let topic0 = log.topics().get(0).cloned();
+        let topic0 = log.topics().first().cloned();
         let Some(topic0) = topic0 else { continue };
         if topic0 == interop_bundle_sent_topic() && log.address() == INTEROP_CENTER_ADDRESS {
             let (l2l1_hash, interop_hash, bundle) =
@@ -46,7 +46,7 @@ pub async fn run(args: TxShowArgs, config: Config, _addresses: AddressBook) -> R
                 data: serde_json::to_value(&bundle_json)?,
             });
         } else if topic0 == l1_message_sent_topic() && log.address() == L1_SENDER_ADDRESS {
-            print!("Decoding L1MessageSent event...\n");
+            println!("Decoding L1MessageSent event...");
             let sender = log
                 .topics()
                 .get(1)
@@ -86,11 +86,11 @@ pub async fn run(args: TxShowArgs, config: Config, _addresses: AddressBook) -> R
                 }),
             });
         } else if topic0 == bundle_verified_topic() {
-            events.push(simple_bundle_event("BundleVerified", &log));
+            events.push(simple_bundle_event("BundleVerified", log));
         } else if topic0 == bundle_executed_topic() {
-            events.push(simple_bundle_event("BundleExecuted", &log));
+            events.push(simple_bundle_event("BundleExecuted", log));
         } else if topic0 == bundle_unbundled_topic() {
-            events.push(simple_bundle_event("BundleUnbundled", &log));
+            events.push(simple_bundle_event("BundleUnbundled", log));
         } else if topic0 == call_processed_topic() {
             let bundle_hash = log
                 .topics()
