@@ -2,6 +2,7 @@ pub mod auto_relay;
 pub mod bundle_action;
 pub mod bundle_extract;
 pub mod chains;
+pub mod decode_calldata;
 pub mod contracts;
 pub mod doctor;
 pub mod encode;

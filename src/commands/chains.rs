@@ -1,10 +1,11 @@
-use crate::cli::{ChainsAddArgs, ChainsListArgs, ChainsRemoveArgs};
+use crate::cli::{ChainsAddArgs, ChainsListArgs, ChainsRemoveArgs, ChainsValidateArgs};
 use crate::config::{ChainConfig, Config};
-use crate::rpc::RpcClient;
+use crate::rpc::{raw_rpc, RpcClient};
 use crate::types::AddressBook;
 use alloy_provider::Provider;
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
+use serde_json::json;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Serialize)]
@@ -131,6 +132,254 @@ async fn probe_chain_id(cfg: &ChainConfig) -> Result<u64> {
     let client = RpcClient::new(&cfg.rpc).await?;
     let chain = client.provider.get_chain_id().await?;
     Ok(chain)
+}
+
+// ── chains validate ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ValidateCheck {
+    chain: String,
+    name: String,
+    status: String,
+    details: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hint: Option<String>,
+}
+
+/// Validate one or all configured chain aliases against their live RPC endpoints.
+///
+/// Checks performed per chain:
+/// 1. RPC reachability
+/// 2. Stored chainId vs live chainId (mismatch = misconfiguration)
+/// 3. zkSync `zks_getL2ToL1LogProof` support (needed for bundle relaying)
+/// 4. zkSync `zks_getL1BatchNumber` support (needed for proof fetching)
+pub async fn run_validate(
+    args: ChainsValidateArgs,
+    config: Config,
+    _addresses: AddressBook,
+) -> Result<()> {
+    let mut chains = config.chains.clone().unwrap_or_default();
+    if chains.is_empty() {
+        chains = legacy_chains(&config);
+    }
+
+    // Filter to the requested alias, or validate all.
+    let targets: BTreeMap<String, ChainConfig> = match &args.alias {
+        Some(alias) => {
+            let cfg = chains
+                .get(alias)
+                .ok_or_else(|| anyhow!("chain alias not found: {alias}"))?
+                .clone();
+            let mut m = BTreeMap::new();
+            m.insert(alias.clone(), cfg);
+            m
+        }
+        None => {
+            if chains.is_empty() {
+                println!("no chains configured");
+                return Ok(());
+            }
+            chains
+        }
+    };
+
+    let mut all_checks: Vec<ValidateCheck> = Vec::new();
+    for (alias, cfg) in &targets {
+        let checks = validate_chain(alias, cfg).await;
+        all_checks.extend(checks);
+    }
+
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&all_checks)?);
+        return Ok(());
+    }
+
+    // Human-readable grouped output
+    let mut current_chain = String::new();
+    for check in &all_checks {
+        if check.chain != current_chain {
+            current_chain = check.chain.clone();
+            println!("\nchain: {current_chain}");
+        }
+        let icon = match check.status.as_str() {
+            "ok" => "  ✅",
+            "warn" => "  ⚠️ ",
+            "fail" => "  ❌",
+            _ => "  • ",
+        };
+        println!("{icon} {}: {}", check.name, check.details);
+        if let Some(hint) = &check.hint {
+            println!("       hint: {hint}");
+        }
+    }
+
+    // Summary
+    let fails = all_checks.iter().filter(|c| c.status == "fail").count();
+    let warns = all_checks.iter().filter(|c| c.status == "warn").count();
+    println!(
+        "\n{} chain(s) validated — {} failure(s), {} warning(s)",
+        targets.len(),
+        fails,
+        warns
+    );
+
+    Ok(())
+}
+
+/// Run all validation checks for a single chain alias.
+async fn validate_chain(alias: &str, cfg: &ChainConfig) -> Vec<ValidateCheck> {
+    let mut checks = Vec::new();
+
+    // ── 1. RPC reachability ──────────────────────────────────────────────────
+    let client = match RpcClient::new(&cfg.rpc).await {
+        Ok(c) => {
+            checks.push(ValidateCheck {
+                chain: alias.to_string(),
+                name: "rpc_reachable".to_string(),
+                status: "ok".to_string(),
+                details: "RPC reachable".to_string(),
+                hint: None,
+            });
+            c
+        }
+        Err(err) => {
+            checks.push(ValidateCheck {
+                chain: alias.to_string(),
+                name: "rpc_reachable".to_string(),
+                status: "fail".to_string(),
+                details: format!("RPC not reachable: {err}"),
+                hint: Some("Check the RPC URL or network connectivity.".to_string()),
+            });
+            // Cannot continue without a client.
+            return checks;
+        }
+    };
+
+    // ── 2. Live chainId vs stored chainId ───────────────────────────────────
+    match client.provider.get_chain_id().await {
+        Ok(live_id) => {
+            let live_id = live_id as u64;
+            match cfg.chain_id {
+                Some(stored_id) if stored_id != live_id => {
+                    checks.push(ValidateCheck {
+                        chain: alias.to_string(),
+                        name: "chain_id_match".to_string(),
+                        status: "fail".to_string(),
+                        details: format!(
+                            "stored chainId {stored_id} does not match live chainId {live_id}"
+                        ),
+                        hint: Some(format!(
+                            "Run: cast-interop chains rm {alias} && cast-interop chains add {alias} --rpc <URL>"
+                        )),
+                    });
+                }
+                Some(stored_id) => {
+                    checks.push(ValidateCheck {
+                        chain: alias.to_string(),
+                        name: "chain_id_match".to_string(),
+                        status: "ok".to_string(),
+                        details: format!("chainId {stored_id} matches live RPC"),
+                        hint: None,
+                    });
+                }
+                None => {
+                    checks.push(ValidateCheck {
+                        chain: alias.to_string(),
+                        name: "chain_id_match".to_string(),
+                        status: "warn".to_string(),
+                        details: format!("no stored chainId; live RPC reports {live_id}"),
+                        hint: Some(format!(
+                            "Re-add the chain to store the chainId: cast-interop chains add {alias} --rpc <URL>"
+                        )),
+                    });
+                }
+            }
+        }
+        Err(err) => {
+            checks.push(ValidateCheck {
+                chain: alias.to_string(),
+                name: "chain_id_match".to_string(),
+                status: "fail".to_string(),
+                details: format!("eth_chainId failed: {err}"),
+                hint: Some("Ensure the RPC URL points to an EVM-compatible endpoint.".to_string()),
+            });
+        }
+    }
+
+    // ── 3. zks_getL2ToL1LogProof support ────────────────────────────────────
+    let proof_result = raw_rpc::<serde_json::Value>(
+        &client,
+        "zks_getL2ToL1LogProof",
+        json!(["0x0000000000000000000000000000000000000000000000000000000000000000", 0]),
+    )
+    .await;
+    match proof_result {
+        Ok(_) => checks.push(ValidateCheck {
+            chain: alias.to_string(),
+            name: "zks_log_proof".to_string(),
+            status: "ok".to_string(),
+            details: "zks_getL2ToL1LogProof supported".to_string(),
+            hint: None,
+        }),
+        Err(err) => {
+            let msg = err.to_string();
+            let (status, hint) = if msg.contains("Method not found") || msg.contains("method not found") {
+                (
+                    "fail",
+                    Some("This RPC does not support zks_getL2ToL1LogProof — bundle relaying will not work.".to_string()),
+                )
+            } else {
+                (
+                    "warn",
+                    Some("Log proof check returned an error; the method may still be supported.".to_string()),
+                )
+            };
+            checks.push(ValidateCheck {
+                chain: alias.to_string(),
+                name: "zks_log_proof".to_string(),
+                status: status.to_string(),
+                details: format!("zks_getL2ToL1LogProof: {msg}"),
+                hint,
+            });
+        }
+    }
+
+    // ── 4. zks_getL1BatchNumber support ─────────────────────────────────────
+    let batch_result =
+        raw_rpc::<serde_json::Value>(&client, "zks_getL1BatchNumber", json!([])).await;
+    match batch_result {
+        Ok(_) => checks.push(ValidateCheck {
+            chain: alias.to_string(),
+            name: "zks_batch_number".to_string(),
+            status: "ok".to_string(),
+            details: "zks_getL1BatchNumber supported".to_string(),
+            hint: None,
+        }),
+        Err(err) => {
+            let msg = err.to_string();
+            let (status, hint) = if msg.contains("Method not found") || msg.contains("method not found") {
+                (
+                    "fail",
+                    Some("This RPC does not support zks_getL1BatchNumber — proof fetching will not work.".to_string()),
+                )
+            } else {
+                (
+                    "warn",
+                    Some("Batch number check returned an error; the method may still be supported.".to_string()),
+                )
+            };
+            checks.push(ValidateCheck {
+                chain: alias.to_string(),
+                name: "zks_batch_number".to_string(),
+                status: status.to_string(),
+                details: format!("zks_getL1BatchNumber: {msg}"),
+                hint,
+            });
+        }
+    }
+
+    checks
 }
 
 /// Redact credentials from a URL string for display.

@@ -164,6 +164,11 @@ pub enum DebugSubcommand {
         long_about = "Poll for finalization, log proof availability, root propagation, and bundle status.\nUse this to monitor relay progress over time.\nExample: cast-interop debug watch --chain-src era --chain-dest test --tx 0xTX_HASH --until executed"
     )]
     Watch(WatchArgs),
+    #[command(
+        about = "Decode raw calldata or revert data offline.",
+        long_about = "Match a raw hex blob against all known interop function and error selectors.\nWorks without any RPC connection — useful for inspecting calldata from failed transactions,\nbundle files, or revert reasons returned by eth_call.\nExample: cast-interop debug decode 0x1234abcd..."
+    )]
+    Decode(DecodeCalldataArgs),
 }
 
 impl DebugCommand {
@@ -179,6 +184,9 @@ impl DebugCommand {
             }
             DebugSubcommand::Doctor(args) => commands::doctor::run(args, config, addresses).await,
             DebugSubcommand::Watch(args) => commands::watch::run(args, config, addresses).await,
+            DebugSubcommand::Decode(args) => {
+                commands::decode_calldata::run(args, config, addresses).await
+            }
         }
     }
 }
@@ -414,6 +422,11 @@ pub enum ChainsSubcommand {
         long_about = "Delete a chain alias from the config file.\nUse this to clean up outdated entries.\nExample: cast-interop chains rm era"
     )]
     Rm(ChainsRemoveArgs),
+    #[command(
+        about = "Validate configured chain aliases.",
+        long_about = "For each configured chain (or a single alias), verify that the RPC is reachable,\nthe stored chainId matches what the RPC reports, and zkSync-specific methods are supported.\nUse this to catch misconfigured chains before running relay operations.\nExample: cast-interop chains validate\nExample: cast-interop chains validate era"
+    )]
+    Validate(ChainsValidateArgs),
 }
 
 impl ChainsCommand {
@@ -426,6 +439,9 @@ impl ChainsCommand {
             ChainsSubcommand::Add(args) => commands::chains::run_add(args, config, addresses).await,
             ChainsSubcommand::Rm(args) => {
                 commands::chains::run_remove(args, config, addresses).await
+            }
+            ChainsSubcommand::Validate(args) => {
+                commands::chains::run_validate(args, config, addresses).await
             }
         }
     }
@@ -514,6 +530,19 @@ pub struct SignerArgs {
         help = "Environment variable holding the private key. Default: PRIVATE_KEY or config signer.private_key_env."
     )]
     pub private_key_env: Option<String>,
+}
+
+/// Decode raw calldata or revert data offline against known interop selectors.
+#[derive(Args, Debug)]
+pub struct DecodeCalldataArgs {
+    #[arg(
+        value_name = "HEX",
+        help = "Raw hex-encoded calldata or revert data (with or without 0x prefix)."
+    )]
+    pub hex: String,
+
+    #[arg(long, help = "Emit JSON output. Default: false.")]
+    pub json: bool,
 }
 
 /// Decode interop events from a transaction receipt.
@@ -847,6 +876,19 @@ pub struct ChainsAddArgs {
 pub struct ChainsRemoveArgs {
     #[arg(value_name = "ALIAS", help = "Alias name to remove.")]
     pub alias: String,
+}
+
+/// Validate configured chain aliases against their live RPC endpoints.
+#[derive(Args, Debug)]
+pub struct ChainsValidateArgs {
+    #[arg(
+        value_name = "ALIAS",
+        help = "Chain alias to validate. Default: validate all configured chains."
+    )]
+    pub alias: Option<String>,
+
+    #[arg(long, help = "Emit JSON output. Default: false.")]
+    pub json: bool,
 }
 
 /// Check RPC capabilities and status.

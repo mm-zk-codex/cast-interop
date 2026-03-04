@@ -5,6 +5,7 @@ use alloy_primitives::ruint::aliases::U256;
 use alloy_primitives::{keccak256, Address, Bytes, B256, U256 as AlloyU256};
 use alloy_sol_types::{SolCall, SolError, SolValue};
 use anyhow::{anyhow, Result};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::str::FromStr;
 
@@ -371,4 +372,440 @@ pub fn decode_call_status(data: Bytes) -> Result<u8> {
 pub fn decode_bytes32(data: Bytes) -> Result<B256> {
     let value: (B256,) = <(B256,)>::abi_decode(&data)?;
     Ok(value.0)
+}
+
+/// Result of offline calldata/revert-data decoding.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DecodedCalldata {
+    /// `"function_call"`, `"error"`, `"bundle_struct"`, or `"unknown"`.
+    pub kind: String,
+    /// Human-readable name (function or error name).
+    pub name: String,
+    /// Hex-encoded 4-byte selector, or empty for raw structs.
+    pub selector: String,
+    /// Decoded parameters as a JSON object.
+    pub params: serde_json::Value,
+}
+
+/// Decode raw hex bytes against all known interop function and error selectors.
+///
+/// Works entirely offline — no RPC required. Pass calldata from a failed
+/// transaction, a bundle file, or any other interop hex blob.
+pub fn decode_calldata_bytes(data: &[u8]) -> DecodedCalldata {
+    if data.len() < 4 {
+        if let Ok(bundle) = InteropBundle::abi_decode(data) {
+            return DecodedCalldata {
+                kind: "bundle_struct".to_string(),
+                name: "InteropBundle".to_string(),
+                selector: String::new(),
+                params: serde_json::to_value(bundle_view(&bundle)).unwrap_or_default(),
+            };
+        }
+        return DecodedCalldata {
+            kind: "unknown".to_string(),
+            name: "unknown".to_string(),
+            selector: hex::encode(data),
+            params: serde_json::Value::Null,
+        };
+    }
+
+    let sel = &data[..4];
+    let sel_hex = hex::encode(sel);
+    // SolCall::abi_decode expects params WITHOUT the 4-byte selector prefix.
+    let params_data = &data[4..];
+
+    // ── Function calls ──────────────────────────────────────────────────────
+    if sel == verifyBundleCall::SELECTOR {
+        return match verifyBundleCall::abi_decode(params_data) {
+            Ok(c) => fmt_bundle_action_call("verifyBundle", &sel_hex, c._bundle, c._proof),
+            Err(e) => fmt_decode_error("function_call", "verifyBundle", &sel_hex, params_data, &e),
+        };
+    }
+    if sel == executeBundleCall::SELECTOR {
+        return match executeBundleCall::abi_decode(params_data) {
+            Ok(c) => fmt_bundle_action_call("executeBundle", &sel_hex, c._bundle, c._proof),
+            Err(e) => fmt_decode_error("function_call", "executeBundle", &sel_hex, params_data, &e),
+        };
+    }
+    if sel == sendMessageCall::SELECTOR {
+        return match sendMessageCall::abi_decode(params_data) {
+            Ok(c) => DecodedCalldata {
+                kind: "function_call".to_string(),
+                name: "sendMessage".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({
+                    "recipient": format!("0x{}", hex::encode(&c.recipient)),
+                    "payload":   format!("0x{}", hex::encode(&c.payload)),
+                    "attributes": c.attributes.iter()
+                        .map(|a| format!("0x{}", hex::encode(a)))
+                        .collect::<Vec<_>>(),
+                }),
+            },
+            Err(e) => fmt_decode_error("function_call", "sendMessage", &sel_hex, params_data, &e),
+        };
+    }
+    if sel == sendBundleCall::SELECTOR {
+        return match sendBundleCall::abi_decode(params_data) {
+            Ok(c) => {
+                let starters: Vec<serde_json::Value> = c
+                    ._callStarters
+                    .iter()
+                    .map(|s| {
+                        serde_json::json!({
+                            "to":   format!("0x{}", hex::encode(&s.to)),
+                            "data": format!("0x{}", hex::encode(&s.data)),
+                            "attributes": s.callAttributes.iter()
+                                .map(|a| format!("0x{}", hex::encode(a)))
+                                .collect::<Vec<_>>(),
+                        })
+                    })
+                    .collect();
+                DecodedCalldata {
+                    kind: "function_call".to_string(),
+                    name: "sendBundle".to_string(),
+                    selector: sel_hex,
+                    params: serde_json::json!({
+                        "destinationChainId": format!("0x{}", hex::encode(&c._destinationChainId)),
+                        "callStarters": starters,
+                        "bundleAttributes": c._bundleAttributes.iter()
+                            .map(|a| format!("0x{}", hex::encode(a)))
+                            .collect::<Vec<_>>(),
+                    }),
+                }
+            }
+            Err(e) => fmt_decode_error("function_call", "sendBundle", &sel_hex, params_data, &e),
+        };
+    }
+    if sel == bundleStatusCall::SELECTOR {
+        return match bundleStatusCall::abi_decode(params_data) {
+            Ok(c) => DecodedCalldata {
+                kind: "function_call".to_string(),
+                name: "bundleStatus".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({ "bundleHash": format!("{:#x}", c.bundleHash) }),
+            },
+            Err(e) => fmt_decode_error("function_call", "bundleStatus", &sel_hex, params_data, &e),
+        };
+    }
+    if sel == callStatusCall::SELECTOR {
+        return match callStatusCall::abi_decode(params_data) {
+            Ok(c) => DecodedCalldata {
+                kind: "function_call".to_string(),
+                name: "callStatus".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({
+                    "bundleHash": format!("{:#x}", c.bundleHash),
+                    "callIndex":  c.callIndex.to_string(),
+                }),
+            },
+            Err(e) => fmt_decode_error("function_call", "callStatus", &sel_hex, params_data, &e),
+        };
+    }
+    if sel == interopRootsCall::SELECTOR {
+        return match interopRootsCall::abi_decode(params_data) {
+            Ok(c) => DecodedCalldata {
+                kind: "function_call".to_string(),
+                name: "interopRoots".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({
+                    "chainId":     c.chainId.to_string(),
+                    "batchNumber": c.batchNumber.to_string(),
+                }),
+            },
+            Err(e) => fmt_decode_error("function_call", "interopRoots", &sel_hex, params_data, &e),
+        };
+    }
+
+    // ── Error selectors (try full decode, fall back to raw params) ───────────
+    if sel == AttributeAlreadySet::SELECTOR {
+        return match AttributeAlreadySet::abi_decode(data) {
+            Ok(e) => DecodedCalldata {
+                kind: "error".to_string(),
+                name: "AttributeAlreadySet".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({ "selector": format!("0x{}", hex::encode(e.selector.as_slice())) }),
+            },
+            Err(_) => fmt_raw_error("AttributeAlreadySet", &sel_hex, params_data),
+        };
+    }
+    if sel == AttributeViolatesRestriction::SELECTOR {
+        return match AttributeViolatesRestriction::abi_decode(data) {
+            Ok(e) => DecodedCalldata {
+                kind: "error".to_string(),
+                name: "AttributeViolatesRestriction".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({
+                    "selector":    format!("0x{}", hex::encode(e.selector.as_slice())),
+                    "restriction": e.restriction.to_string(),
+                }),
+            },
+            Err(_) => fmt_raw_error("AttributeViolatesRestriction", &sel_hex, params_data),
+        };
+    }
+    if sel == BundleAlreadyProcessed::SELECTOR {
+        return match BundleAlreadyProcessed::abi_decode(data) {
+            Ok(e) => DecodedCalldata {
+                kind: "error".to_string(),
+                name: "BundleAlreadyProcessed".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({ "bundleHash": format!("{:#x}", e.bundleHash) }),
+            },
+            Err(_) => fmt_raw_error("BundleAlreadyProcessed", &sel_hex, params_data),
+        };
+    }
+    if sel == BundleVerifiedAlready::SELECTOR {
+        return match BundleVerifiedAlready::abi_decode(data) {
+            Ok(e) => DecodedCalldata {
+                kind: "error".to_string(),
+                name: "BundleVerifiedAlready".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({ "bundleHash": format!("{:#x}", e.bundleHash) }),
+            },
+            Err(_) => fmt_raw_error("BundleVerifiedAlready", &sel_hex, params_data),
+        };
+    }
+    if sel == CallAlreadyExecuted::SELECTOR {
+        return match CallAlreadyExecuted::abi_decode(data) {
+            Ok(e) => DecodedCalldata {
+                kind: "error".to_string(),
+                name: "CallAlreadyExecuted".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({
+                    "bundleHash": format!("{:#x}", e.bundleHash),
+                    "callIndex":  e.callIndex.to_string(),
+                }),
+            },
+            Err(_) => fmt_raw_error("CallAlreadyExecuted", &sel_hex, params_data),
+        };
+    }
+    if sel == CallNotExecutable::SELECTOR {
+        return match CallNotExecutable::abi_decode(data) {
+            Ok(e) => DecodedCalldata {
+                kind: "error".to_string(),
+                name: "CallNotExecutable".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({
+                    "bundleHash": format!("{:#x}", e.bundleHash),
+                    "callIndex":  e.callIndex.to_string(),
+                }),
+            },
+            Err(_) => fmt_raw_error("CallNotExecutable", &sel_hex, params_data),
+        };
+    }
+    if sel == CanNotUnbundle::SELECTOR {
+        return match CanNotUnbundle::abi_decode(data) {
+            Ok(e) => DecodedCalldata {
+                kind: "error".to_string(),
+                name: "CanNotUnbundle".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({ "bundleHash": format!("{:#x}", e.bundleHash) }),
+            },
+            Err(_) => fmt_raw_error("CanNotUnbundle", &sel_hex, params_data),
+        };
+    }
+    if sel == ExecutingNotAllowed::SELECTOR {
+        return match ExecutingNotAllowed::abi_decode(data) {
+            Ok(e) => DecodedCalldata {
+                kind: "error".to_string(),
+                name: "ExecutingNotAllowed".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({
+                    "bundleHash":       format!("{:#x}", e.bundleHash),
+                    "callerAddress":    format!("0x{}", hex::encode(&e.callerAddress)),
+                    "executionAddress": format!("0x{}", hex::encode(&e.executionAddress)),
+                }),
+            },
+            Err(_) => fmt_raw_error("ExecutingNotAllowed", &sel_hex, params_data),
+        };
+    }
+    if sel == IndirectCallValueMismatch::SELECTOR {
+        return match IndirectCallValueMismatch::abi_decode(data) {
+            Ok(e) => DecodedCalldata {
+                kind: "error".to_string(),
+                name: "IndirectCallValueMismatch".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({
+                    "expected": e.expected.to_string(),
+                    "actual":   e.actual.to_string(),
+                }),
+            },
+            Err(_) => fmt_raw_error("IndirectCallValueMismatch", &sel_hex, params_data),
+        };
+    }
+    if sel == InvalidInteropBundleVersion::SELECTOR {
+        return DecodedCalldata {
+            kind: "error".to_string(),
+            name: "InvalidInteropBundleVersion".to_string(),
+            selector: sel_hex,
+            params: serde_json::Value::Object(Default::default()),
+        };
+    }
+    if sel == InvalidInteropCallVersion::SELECTOR {
+        return DecodedCalldata {
+            kind: "error".to_string(),
+            name: "InvalidInteropCallVersion".to_string(),
+            selector: sel_hex,
+            params: serde_json::Value::Object(Default::default()),
+        };
+    }
+    if sel == MessageNotIncluded::SELECTOR {
+        return DecodedCalldata {
+            kind: "error".to_string(),
+            name: "MessageNotIncluded".to_string(),
+            selector: sel_hex,
+            params: serde_json::Value::Object(Default::default()),
+        };
+    }
+    if sel == UnauthorizedMessageSender::SELECTOR {
+        return match UnauthorizedMessageSender::abi_decode(data) {
+            Ok(e) => DecodedCalldata {
+                kind: "error".to_string(),
+                name: "UnauthorizedMessageSender".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({
+                    "expected": format!("{:#x}", e.expected),
+                    "actual":   format!("{:#x}", e.actual),
+                }),
+            },
+            Err(_) => fmt_raw_error("UnauthorizedMessageSender", &sel_hex, params_data),
+        };
+    }
+    if sel == UnbundlingNotAllowed::SELECTOR {
+        return match UnbundlingNotAllowed::abi_decode(data) {
+            Ok(e) => DecodedCalldata {
+                kind: "error".to_string(),
+                name: "UnbundlingNotAllowed".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({
+                    "bundleHash":       format!("{:#x}", e.bundleHash),
+                    "callerAddress":    format!("0x{}", hex::encode(&e.callerAddress)),
+                    "unbundlerAddress": format!("0x{}", hex::encode(&e.unbundlerAddress)),
+                }),
+            },
+            Err(_) => fmt_raw_error("UnbundlingNotAllowed", &sel_hex, params_data),
+        };
+    }
+    if sel == WrongCallStatusLength::SELECTOR {
+        return match WrongCallStatusLength::abi_decode(data) {
+            Ok(e) => DecodedCalldata {
+                kind: "error".to_string(),
+                name: "WrongCallStatusLength".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({
+                    "bundleCallsLength":        e.bundleCallsLength.to_string(),
+                    "providedCallStatusLength": e.providedCallStatusLength.to_string(),
+                }),
+            },
+            Err(_) => fmt_raw_error("WrongCallStatusLength", &sel_hex, params_data),
+        };
+    }
+    if sel == WrongDestinationChainId::SELECTOR {
+        return match WrongDestinationChainId::abi_decode(data) {
+            Ok(e) => DecodedCalldata {
+                kind: "error".to_string(),
+                name: "WrongDestinationChainId".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({
+                    "bundleHash": format!("{:#x}", e.bundleHash),
+                    "expected":   e.expected.to_string(),
+                    "actual":     e.actual.to_string(),
+                }),
+            },
+            Err(_) => fmt_raw_error("WrongDestinationChainId", &sel_hex, params_data),
+        };
+    }
+    if sel == WrongSourceChainId::SELECTOR {
+        return match WrongSourceChainId::abi_decode(data) {
+            Ok(e) => DecodedCalldata {
+                kind: "error".to_string(),
+                name: "WrongSourceChainId".to_string(),
+                selector: sel_hex,
+                params: serde_json::json!({
+                    "bundleHash": format!("{:#x}", e.bundleHash),
+                    "expected":   e.expected.to_string(),
+                    "actual":     e.actual.to_string(),
+                }),
+            },
+            Err(_) => fmt_raw_error("WrongSourceChainId", &sel_hex, params_data),
+        };
+    }
+
+    // ── Fallback: try as raw InteropBundle struct (e.g. contents of a .hex file) ─
+    if let Ok(bundle) = InteropBundle::abi_decode(data) {
+        return DecodedCalldata {
+            kind: "bundle_struct".to_string(),
+            name: "InteropBundle".to_string(),
+            selector: String::new(),
+            params: serde_json::to_value(bundle_view(&bundle)).unwrap_or_default(),
+        };
+    }
+
+    DecodedCalldata {
+        kind: "unknown".to_string(),
+        name: "unknown".to_string(),
+        selector: sel_hex,
+        params: serde_json::json!({ "raw": format!("0x{}", hex::encode(data)) }),
+    }
+}
+
+// ── Private helpers ──────────────────────────────────────────────────────────
+
+fn fmt_bundle_action_call(
+    name: &str,
+    sel_hex: &str,
+    bundle_bytes: Bytes,
+    proof: MessageInclusionProofSol,
+) -> DecodedCalldata {
+    let bundle_hex = format!("0x{}", hex::encode(&bundle_bytes));
+    let bundle_decoded = InteropBundle::abi_decode(&bundle_bytes)
+        .ok()
+        .map(|b| serde_json::to_value(bundle_view(&b)).unwrap_or_default());
+    DecodedCalldata {
+        kind: "function_call".to_string(),
+        name: name.to_string(),
+        selector: sel_hex.to_string(),
+        params: serde_json::json!({
+            "bundleHex": bundle_hex,
+            "bundle": bundle_decoded,
+            "proof": {
+                "chainId":          proof.chainId.to_string(),
+                "l1BatchNumber":    proof.l1BatchNumber.to_string(),
+                "l2MessageIndex":   proof.l2MessageIndex.to_string(),
+                "message": {
+                    "txNumberInBatch": proof.message.txNumberInBatch,
+                    "sender":          format!("{:#x}", proof.message.sender),
+                    "data":            format!("0x{}", hex::encode(&proof.message.data)),
+                },
+                "proofNodes": proof.proof.iter().map(|p| format!("{p:#x}")).collect::<Vec<_>>(),
+            },
+        }),
+    }
+}
+
+fn fmt_decode_error(
+    kind: &str,
+    name: &str,
+    sel_hex: &str,
+    params_data: &[u8],
+    err: &dyn std::fmt::Display,
+) -> DecodedCalldata {
+    DecodedCalldata {
+        kind: kind.to_string(),
+        name: name.to_string(),
+        selector: sel_hex.to_string(),
+        params: serde_json::json!({
+            "decodeError": err.to_string(),
+            "rawParams": format!("0x{}", hex::encode(params_data)),
+        }),
+    }
+}
+
+fn fmt_raw_error(name: &str, sel_hex: &str, params_data: &[u8]) -> DecodedCalldata {
+    DecodedCalldata {
+        kind: "error".to_string(),
+        name: name.to_string(),
+        selector: sel_hex.to_string(),
+        params: serde_json::json!({ "rawParams": format!("0x{}", hex::encode(params_data)) }),
+    }
 }
