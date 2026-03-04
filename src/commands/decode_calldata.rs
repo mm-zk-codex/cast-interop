@@ -7,8 +7,7 @@ use anyhow::Result;
 /// Decode raw calldata or revert data offline against known interop selectors.
 pub async fn run(args: DecodeCalldataArgs, _config: Config, _addresses: AddressBook) -> Result<()> {
     let hex_input = args.hex.trim_start_matches("0x");
-    let data =
-        hex::decode(hex_input).map_err(|e| anyhow::anyhow!("invalid hex input: {e}"))?;
+    let data = hex::decode(hex_input).map_err(|e| anyhow::anyhow!("invalid hex input: {e}"))?;
 
     let decoded = decode_calldata_bytes(&data);
 

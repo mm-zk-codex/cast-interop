@@ -412,24 +412,25 @@ pub fn decode_calldata_bytes(data: &[u8]) -> DecodedCalldata {
 
     let sel = &data[..4];
     let sel_hex = hex::encode(sel);
-    // SolCall::abi_decode expects params WITHOUT the 4-byte selector prefix.
+    // SolCall::abi_decode (like SolError::abi_decode) expects the FULL calldata
+    // including the 4-byte selector prefix.  Keep params_data for fallback display only.
     let params_data = &data[4..];
 
     // ── Function calls ──────────────────────────────────────────────────────
     if sel == verifyBundleCall::SELECTOR {
-        return match verifyBundleCall::abi_decode(params_data) {
+        return match verifyBundleCall::abi_decode(data) {
             Ok(c) => fmt_bundle_action_call("verifyBundle", &sel_hex, c._bundle, c._proof),
             Err(e) => fmt_decode_error("function_call", "verifyBundle", &sel_hex, params_data, &e),
         };
     }
     if sel == executeBundleCall::SELECTOR {
-        return match executeBundleCall::abi_decode(params_data) {
+        return match executeBundleCall::abi_decode(data) {
             Ok(c) => fmt_bundle_action_call("executeBundle", &sel_hex, c._bundle, c._proof),
             Err(e) => fmt_decode_error("function_call", "executeBundle", &sel_hex, params_data, &e),
         };
     }
     if sel == sendMessageCall::SELECTOR {
-        return match sendMessageCall::abi_decode(params_data) {
+        return match sendMessageCall::abi_decode(data) {
             Ok(c) => DecodedCalldata {
                 kind: "function_call".to_string(),
                 name: "sendMessage".to_string(),
@@ -446,7 +447,7 @@ pub fn decode_calldata_bytes(data: &[u8]) -> DecodedCalldata {
         };
     }
     if sel == sendBundleCall::SELECTOR {
-        return match sendBundleCall::abi_decode(params_data) {
+        return match sendBundleCall::abi_decode(data) {
             Ok(c) => {
                 let starters: Vec<serde_json::Value> = c
                     ._callStarters
@@ -478,7 +479,7 @@ pub fn decode_calldata_bytes(data: &[u8]) -> DecodedCalldata {
         };
     }
     if sel == bundleStatusCall::SELECTOR {
-        return match bundleStatusCall::abi_decode(params_data) {
+        return match bundleStatusCall::abi_decode(data) {
             Ok(c) => DecodedCalldata {
                 kind: "function_call".to_string(),
                 name: "bundleStatus".to_string(),
@@ -489,7 +490,7 @@ pub fn decode_calldata_bytes(data: &[u8]) -> DecodedCalldata {
         };
     }
     if sel == callStatusCall::SELECTOR {
-        return match callStatusCall::abi_decode(params_data) {
+        return match callStatusCall::abi_decode(data) {
             Ok(c) => DecodedCalldata {
                 kind: "function_call".to_string(),
                 name: "callStatus".to_string(),
@@ -503,7 +504,7 @@ pub fn decode_calldata_bytes(data: &[u8]) -> DecodedCalldata {
         };
     }
     if sel == interopRootsCall::SELECTOR {
-        return match interopRootsCall::abi_decode(params_data) {
+        return match interopRootsCall::abi_decode(data) {
             Ok(c) => DecodedCalldata {
                 kind: "function_call".to_string(),
                 name: "interopRoots".to_string(),
@@ -807,5 +808,193 @@ fn fmt_raw_error(name: &str, sel_hex: &str, params_data: &[u8]) -> DecodedCallda
         name: name.to_string(),
         selector: sel_hex.to_string(),
         params: serde_json::json!({ "rawParams": format!("0x{}", hex::encode(params_data)) }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    fn params_str<'a>(decoded: &'a DecodedCalldata, key: &str) -> &'a str {
+        decoded.params[key].as_str().expect("expected string param")
+    }
+
+    // ── Edge cases ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn decode_empty_returns_unknown() {
+        let d = decode_calldata_bytes(&[]);
+        assert_eq!(d.kind, "unknown");
+    }
+
+    #[test]
+    fn decode_short_input_returns_unknown() {
+        let d = decode_calldata_bytes(&[0xde, 0xad]);
+        assert_eq!(d.kind, "unknown");
+    }
+
+    #[test]
+    fn decode_unknown_selector_returns_unknown() {
+        // 0xdeadbeef is not a known selector.
+        let d = decode_calldata_bytes(&[0xde, 0xad, 0xbe, 0xef, 0x00, 0x00, 0x00, 0x00]);
+        assert_eq!(d.kind, "unknown");
+        assert_eq!(d.selector, "deadbeef");
+    }
+
+    // ── Function calls (round-trip via existing encode helpers) ──────────────
+
+    #[test]
+    fn decode_bundle_status_call_round_trip() {
+        let bundle_hash = B256::from([0xabu8; 32]);
+        let encoded = encode_bundle_status_call(bundle_hash);
+        let d = decode_calldata_bytes(&encoded);
+        assert_eq!(d.kind, "function_call");
+        assert_eq!(d.name, "bundleStatus");
+        assert_eq!(d.selector, hex::encode(bundleStatusCall::SELECTOR));
+        // bundleHash param should contain the encoded bytes
+        let hash_str = params_str(&d, "bundleHash");
+        assert!(hash_str.contains(&hex::encode([0xabu8; 32])));
+    }
+
+    #[test]
+    fn decode_call_status_call_round_trip() {
+        let bundle_hash = B256::from([0x01u8; 32]);
+        let call_index = AlloyU256::from(5u64);
+        let encoded = encode_call_status_call(bundle_hash, call_index);
+        let d = decode_calldata_bytes(&encoded);
+        assert_eq!(d.kind, "function_call");
+        assert_eq!(d.name, "callStatus");
+        assert_eq!(params_str(&d, "callIndex"), "5");
+    }
+
+    #[test]
+    fn decode_interop_roots_call_round_trip() {
+        let chain_id = AlloyU256::from(324u64);
+        let batch_number = AlloyU256::from(12345u64);
+        let encoded = encode_interop_roots_call(chain_id, batch_number);
+        let d = decode_calldata_bytes(&encoded);
+        assert_eq!(d.kind, "function_call");
+        assert_eq!(d.name, "interopRoots");
+        assert_eq!(params_str(&d, "chainId"), "324");
+        assert_eq!(params_str(&d, "batchNumber"), "12345");
+    }
+
+    #[test]
+    fn decode_send_message_call_round_trip() {
+        let recipient = Bytes::from(vec![0xaa, 0xbb, 0xcc]);
+        let payload = Bytes::from(vec![0x01, 0x02, 0x03]);
+        let encoded = encode_send_message_call(recipient, payload, vec![]).unwrap();
+        let d = decode_calldata_bytes(&encoded);
+        assert_eq!(d.kind, "function_call");
+        assert_eq!(d.name, "sendMessage");
+        assert_eq!(params_str(&d, "recipient"), "0xaabbcc");
+        assert_eq!(params_str(&d, "payload"), "0x010203");
+        // empty attributes → empty array
+        assert_eq!(d.params["attributes"].as_array().unwrap().len(), 0);
+    }
+
+    // ── Interop errors ───────────────────────────────────────────────────────
+
+    #[test]
+    fn decode_error_wrong_destination_chain_id() {
+        let err = WrongDestinationChainId {
+            bundleHash: B256::ZERO,
+            expected: AlloyU256::from(324u64),
+            actual: AlloyU256::from(300u64),
+        };
+        let encoded = err.abi_encode();
+        let d = decode_calldata_bytes(&encoded);
+        assert_eq!(d.kind, "error");
+        assert_eq!(d.name, "WrongDestinationChainId");
+        assert_eq!(d.selector, hex::encode(WrongDestinationChainId::SELECTOR));
+        assert_eq!(params_str(&d, "expected"), "324");
+        assert_eq!(params_str(&d, "actual"), "300");
+    }
+
+    #[test]
+    fn decode_error_bundle_already_processed() {
+        let hash = B256::from([0x42u8; 32]);
+        let err = BundleAlreadyProcessed { bundleHash: hash };
+        let encoded = err.abi_encode();
+        let d = decode_calldata_bytes(&encoded);
+        assert_eq!(d.kind, "error");
+        assert_eq!(d.name, "BundleAlreadyProcessed");
+        let hash_str = params_str(&d, "bundleHash");
+        assert!(hash_str.contains(&hex::encode([0x42u8; 32])));
+    }
+
+    #[test]
+    fn decode_error_wrong_source_chain_id() {
+        let err = WrongSourceChainId {
+            bundleHash: B256::ZERO,
+            expected: AlloyU256::from(6565u64),
+            actual: AlloyU256::from(6566u64),
+        };
+        let encoded = err.abi_encode();
+        let d = decode_calldata_bytes(&encoded);
+        assert_eq!(d.kind, "error");
+        assert_eq!(d.name, "WrongSourceChainId");
+        assert_eq!(params_str(&d, "expected"), "6565");
+        assert_eq!(params_str(&d, "actual"), "6566");
+    }
+
+    #[test]
+    fn decode_error_executing_not_allowed() {
+        let err = ExecutingNotAllowed {
+            bundleHash: B256::ZERO,
+            callerAddress: Bytes::from(vec![0x01, 0x02]),
+            executionAddress: Bytes::from(vec![0x03, 0x04]),
+        };
+        let encoded = err.abi_encode();
+        let d = decode_calldata_bytes(&encoded);
+        assert_eq!(d.kind, "error");
+        assert_eq!(d.name, "ExecutingNotAllowed");
+        assert_eq!(params_str(&d, "callerAddress"), "0x0102");
+        assert_eq!(params_str(&d, "executionAddress"), "0x0304");
+    }
+
+    #[test]
+    fn decode_error_no_params_invalid_bundle_version() {
+        let err = InvalidInteropBundleVersion {};
+        let encoded = err.abi_encode();
+        let d = decode_calldata_bytes(&encoded);
+        assert_eq!(d.kind, "error");
+        assert_eq!(d.name, "InvalidInteropBundleVersion");
+        assert_eq!(
+            d.selector,
+            hex::encode(InvalidInteropBundleVersion::SELECTOR)
+        );
+    }
+
+    #[test]
+    fn decode_error_indirect_call_value_mismatch() {
+        let err = IndirectCallValueMismatch {
+            expected: AlloyU256::from(1000u64),
+            actual: AlloyU256::from(500u64),
+        };
+        let encoded = err.abi_encode();
+        let d = decode_calldata_bytes(&encoded);
+        assert_eq!(d.kind, "error");
+        assert_eq!(d.name, "IndirectCallValueMismatch");
+        assert_eq!(params_str(&d, "expected"), "1000");
+        assert_eq!(params_str(&d, "actual"), "500");
+    }
+
+    // ── Selector identity — every known name maps to exactly one selector ────
+
+    #[test]
+    fn selector_map_has_no_collisions() {
+        let m = error_selector_map();
+        // All values must be distinct names (no two selectors point to same name)
+        let mut names: Vec<&str> = m.values().copied().collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(
+            names.len(),
+            m.len(),
+            "duplicate names in error_selector_map"
+        );
     }
 }

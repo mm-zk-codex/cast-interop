@@ -258,11 +258,9 @@ async fn validate_chain(alias: &str, cfg: &ChainConfig) -> Vec<ValidateCheck> {
 
     // ── 2. Live chainId vs stored chainId ───────────────────────────────────
     match client.provider.get_chain_id().await {
-        Ok(live_id) => {
-            let live_id = live_id as u64;
-            match cfg.chain_id {
-                Some(stored_id) if stored_id != live_id => {
-                    checks.push(ValidateCheck {
+        Ok(live_id) => match cfg.chain_id {
+            Some(stored_id) if stored_id != live_id => {
+                checks.push(ValidateCheck {
                         chain: alias.to_string(),
                         name: "chain_id_match".to_string(),
                         status: "fail".to_string(),
@@ -273,18 +271,18 @@ async fn validate_chain(alias: &str, cfg: &ChainConfig) -> Vec<ValidateCheck> {
                             "Run: cast-interop chains rm {alias} && cast-interop chains add {alias} --rpc <URL>"
                         )),
                     });
-                }
-                Some(stored_id) => {
-                    checks.push(ValidateCheck {
-                        chain: alias.to_string(),
-                        name: "chain_id_match".to_string(),
-                        status: "ok".to_string(),
-                        details: format!("chainId {stored_id} matches live RPC"),
-                        hint: None,
-                    });
-                }
-                None => {
-                    checks.push(ValidateCheck {
+            }
+            Some(stored_id) => {
+                checks.push(ValidateCheck {
+                    chain: alias.to_string(),
+                    name: "chain_id_match".to_string(),
+                    status: "ok".to_string(),
+                    details: format!("chainId {stored_id} matches live RPC"),
+                    hint: None,
+                });
+            }
+            None => {
+                checks.push(ValidateCheck {
                         chain: alias.to_string(),
                         name: "chain_id_match".to_string(),
                         status: "warn".to_string(),
@@ -293,9 +291,8 @@ async fn validate_chain(alias: &str, cfg: &ChainConfig) -> Vec<ValidateCheck> {
                             "Re-add the chain to store the chainId: cast-interop chains add {alias} --rpc <URL>"
                         )),
                     });
-                }
             }
-        }
+        },
         Err(err) => {
             checks.push(ValidateCheck {
                 chain: alias.to_string(),
@@ -311,7 +308,10 @@ async fn validate_chain(alias: &str, cfg: &ChainConfig) -> Vec<ValidateCheck> {
     let proof_result = raw_rpc::<serde_json::Value>(
         &client,
         "zks_getL2ToL1LogProof",
-        json!(["0x0000000000000000000000000000000000000000000000000000000000000000", 0]),
+        json!([
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            0
+        ]),
     )
     .await;
     match proof_result {
@@ -324,7 +324,9 @@ async fn validate_chain(alias: &str, cfg: &ChainConfig) -> Vec<ValidateCheck> {
         }),
         Err(err) => {
             let msg = err.to_string();
-            let (status, hint) = if msg.contains("Method not found") || msg.contains("method not found") {
+            let (status, hint) = if msg.contains("Method not found")
+                || msg.contains("method not found")
+            {
                 (
                     "fail",
                     Some("This RPC does not support zks_getL2ToL1LogProof — bundle relaying will not work.".to_string()),
@@ -332,7 +334,10 @@ async fn validate_chain(alias: &str, cfg: &ChainConfig) -> Vec<ValidateCheck> {
             } else {
                 (
                     "warn",
-                    Some("Log proof check returned an error; the method may still be supported.".to_string()),
+                    Some(
+                        "Log proof check returned an error; the method may still be supported."
+                            .to_string(),
+                    ),
                 )
             };
             checks.push(ValidateCheck {
@@ -358,7 +363,9 @@ async fn validate_chain(alias: &str, cfg: &ChainConfig) -> Vec<ValidateCheck> {
         }),
         Err(err) => {
             let msg = err.to_string();
-            let (status, hint) = if msg.contains("Method not found") || msg.contains("method not found") {
+            let (status, hint) = if msg.contains("Method not found")
+                || msg.contains("method not found")
+            {
                 (
                     "fail",
                     Some("This RPC does not support zks_getL1BatchNumber — proof fetching will not work.".to_string()),
@@ -366,7 +373,10 @@ async fn validate_chain(alias: &str, cfg: &ChainConfig) -> Vec<ValidateCheck> {
             } else {
                 (
                     "warn",
-                    Some("Batch number check returned an error; the method may still be supported.".to_string()),
+                    Some(
+                        "Batch number check returned an error; the method may still be supported."
+                            .to_string(),
+                    ),
                 )
             };
             checks.push(ValidateCheck {
