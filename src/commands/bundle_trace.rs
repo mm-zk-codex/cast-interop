@@ -145,65 +145,13 @@ pub async fn run(args: BundleTraceArgs, config: Config, addresses: AddressBook) 
 
     // Step 4: Check root settlement on dest
     if let Some(ref proof) = log_proof {
-        let source_chain_id = source_client
-            .provider
-            .get_chain_id()
-            .await
-            .unwrap_or(0);
-        let data = encode_interop_roots_call(
-            U256::from(source_chain_id),
-            U256::from(proof.batch_number),
-        );
-        match eth_call(&dest_client, addresses.interop_root_storage, data).await {
-            Ok(result) => match decode_bytes32(result) {
-                Ok(root) => {
-                    let expected = &proof.root;
-                    let root_hex = b256_to_hex(root);
-                    if root == B256::ZERO {
-                        steps.push(TraceStep {
-                            step: "root_settled".into(),
-                            status: "pending".into(),
-                            details: Some(serde_json::json!({
-                                "message": "root not yet available on destination",
-                                "batchNumber": proof.batch_number,
-                            })),
-                        });
-                    } else if root_hex == *expected {
-                        steps.push(TraceStep {
-                            step: "root_settled".into(),
-                            status: "ok".into(),
-                            details: Some(serde_json::json!({
-                                "root": root_hex,
-                                "batchNumber": proof.batch_number,
-                            })),
-                        });
-                    } else {
-                        steps.push(TraceStep {
-                            step: "root_settled".into(),
-                            status: "error".into(),
-                            details: Some(serde_json::json!({
-                                "message": "root mismatch",
-                                "expected": expected,
-                                "actual": root_hex,
-                            })),
-                        });
-                    }
-                }
-                Err(err) => {
-                    steps.push(TraceStep {
-                        step: "root_settled".into(),
-                        status: "error".into(),
-                        details: Some(serde_json::json!({ "error": err.to_string() })),
-                    });
-                }
-            },
-            Err(err) => {
-                steps.push(TraceStep {
-                    step: "root_settled".into(),
-                    status: "error".into(),
-                    details: Some(serde_json::json!({ "error": err.to_string() })),
-                });
-            }
+        match check_root_settled(&source_client, &dest_client, &addresses, proof).await {
+            Ok(step) => steps.push(step),
+            Err(err) => steps.push(TraceStep {
+                step: "root_settled".into(),
+                status: "error".into(),
+                details: Some(serde_json::json!({ "error": err.to_string() })),
+            }),
         }
     } else {
         steps.push(TraceStep {
@@ -255,44 +203,52 @@ pub async fn run(args: BundleTraceArgs, config: Config, addresses: AddressBook) 
     // Step 6: Scan for BundleExecuted event on dest (only if FullyExecuted)
     let is_executed = bundle_status_value == Some(2);
     if is_executed {
-        let latest_block = dest_client
-            .provider
-            .get_block_number()
-            .await
-            .unwrap_or(0);
-        let from_block = latest_block.saturating_sub(args.scan_blocks);
-        let filter = Filter::new()
-            .from_block(BlockNumberOrTag::Number(from_block))
-            .to_block(BlockNumberOrTag::Latest)
-            .event_signature(bundle_executed_topic())
-            .topic1(bundle_hash);
+        match dest_client.provider.get_block_number().await {
+            Ok(latest_block) => {
+                let from_block = latest_block.saturating_sub(args.scan_blocks);
+                let filter = Filter::new()
+                    .from_block(BlockNumberOrTag::Number(from_block))
+                    .to_block(BlockNumberOrTag::Latest)
+                    .event_signature(bundle_executed_topic())
+                    .topic1(bundle_hash);
 
-        match get_logs(&dest_client, filter).await {
-            Ok(logs) => {
-                if let Some(log) = logs.first() {
-                    steps.push(TraceStep {
-                        step: "execution_tx".into(),
-                        status: "ok".into(),
-                        details: Some(serde_json::json!({
-                            "txHash": log.transaction_hash.map(|h| format!("{h:#x}")),
-                            "blockNumber": log.block_number,
-                        })),
-                    });
-                } else {
-                    steps.push(TraceStep {
-                        step: "execution_tx".into(),
-                        status: "not_found".into(),
-                        details: Some(serde_json::json!({
-                            "message": format!("BundleExecuted event not found in last {} blocks", args.scan_blocks),
-                        })),
-                    });
+                match get_logs(&dest_client, filter).await {
+                    Ok(logs) => {
+                        if let Some(log) = logs.first() {
+                            steps.push(TraceStep {
+                                step: "execution_tx".into(),
+                                status: "ok".into(),
+                                details: Some(serde_json::json!({
+                                    "txHash": log.transaction_hash.map(|h| format!("{h:#x}")),
+                                    "blockNumber": log.block_number,
+                                })),
+                            });
+                        } else {
+                            steps.push(TraceStep {
+                                step: "execution_tx".into(),
+                                status: "not_found".into(),
+                                details: Some(serde_json::json!({
+                                    "message": format!("BundleExecuted event not found in last {} blocks", args.scan_blocks),
+                                })),
+                            });
+                        }
+                    }
+                    Err(err) => {
+                        steps.push(TraceStep {
+                            step: "execution_tx".into(),
+                            status: "error".into(),
+                            details: Some(serde_json::json!({ "error": err.to_string() })),
+                        });
+                    }
                 }
             }
             Err(err) => {
                 steps.push(TraceStep {
                     step: "execution_tx".into(),
                     status: "error".into(),
-                    details: Some(serde_json::json!({ "error": err.to_string() })),
+                    details: Some(serde_json::json!({
+                        "error": format!("failed to get dest block number: {err}")
+                    })),
                 });
             }
         }
@@ -347,6 +303,56 @@ fn print_output(args: &BundleTraceArgs, tx_hash: B256, steps: Vec<TraceStep>) ->
         }
     }
     Ok(())
+}
+
+async fn check_root_settled(
+    source_client: &RpcClient,
+    dest_client: &RpcClient,
+    addresses: &AddressBook,
+    proof: &crate::rpc::LogProof,
+) -> Result<TraceStep> {
+    let source_chain_id = source_client
+        .provider
+        .get_chain_id()
+        .await
+        .context("failed to get source chain ID")?;
+    let data = encode_interop_roots_call(
+        U256::from(source_chain_id),
+        U256::from(proof.batch_number),
+    );
+    let result = eth_call(dest_client, addresses.interop_root_storage, data).await?;
+    let root = decode_bytes32(result)?;
+    let expected = &proof.root;
+    let root_hex = b256_to_hex(root);
+    if root == B256::ZERO {
+        Ok(TraceStep {
+            step: "root_settled".into(),
+            status: "pending".into(),
+            details: Some(serde_json::json!({
+                "message": "root not yet available on destination",
+                "batchNumber": proof.batch_number,
+            })),
+        })
+    } else if root_hex == *expected {
+        Ok(TraceStep {
+            step: "root_settled".into(),
+            status: "ok".into(),
+            details: Some(serde_json::json!({
+                "root": root_hex,
+                "batchNumber": proof.batch_number,
+            })),
+        })
+    } else {
+        Ok(TraceStep {
+            step: "root_settled".into(),
+            status: "error".into(),
+            details: Some(serde_json::json!({
+                "message": "root mismatch",
+                "expected": expected,
+                "actual": root_hex,
+            })),
+        })
+    }
 }
 
 fn bundle_status_string(value: u8) -> String {

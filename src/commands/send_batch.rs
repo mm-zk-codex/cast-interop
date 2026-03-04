@@ -123,7 +123,30 @@ pub async fn run(args: SendBatchArgs, config: Config, addresses: AddressBook) ->
         .await;
 
         match result {
-            Ok((tx_hash, send_id, receipt)) => {
+            Ok(SendResult::DryRun { send_id }) => {
+                sent_count += 1;
+                let entry = BatchResultEntry {
+                    index: idx,
+                    tx_hash: None,
+                    status: true,
+                    send_id: Some(format!("{send_id:#x}")),
+                    relay_tx_hash: None,
+                    error: None,
+                };
+                if !args.json {
+                    println!(
+                        "[{}/{}] dry-run sendId: {send_id:#x}",
+                        idx + 1,
+                        total
+                    );
+                }
+                results.push(entry);
+            }
+            Ok(SendResult::Sent {
+                tx_hash,
+                send_id,
+                receipt,
+            }) => {
                 sent_count += 1;
                 let mut entry = BatchResultEntry {
                     index: idx,
@@ -134,7 +157,7 @@ pub async fn run(args: SendBatchArgs, config: Config, addresses: AddressBook) ->
                     error: None,
                 };
 
-                if args.relay && !args.dry_run {
+                if args.relay {
                     if let (Some(dest_client), Some(dest_url)) =
                         (&dest_client, &dest_rpc_url)
                     {
@@ -210,6 +233,17 @@ pub async fn run(args: SendBatchArgs, config: Config, addresses: AddressBook) ->
     Ok(())
 }
 
+enum SendResult {
+    Sent {
+        tx_hash: B256,
+        send_id: Option<B256>,
+        receipt: alloy_rpc_types::TransactionReceipt,
+    },
+    DryRun {
+        send_id: B256,
+    },
+}
+
 async fn send_one_message(
     args: &SendBatchArgs,
     config: &Config,
@@ -219,7 +253,7 @@ async fn send_one_message(
     wallet: Option<&alloy_signer_local::PrivateKeySigner>,
     msg: &BatchMessage,
     _idx: usize,
-) -> Result<(B256, Option<B256>, alloy_rpc_types::TransactionReceipt)> {
+) -> Result<SendResult> {
     let dest_chain_id = config.resolve_chain_id(&msg.to_chain)?;
     let to = parse_address(&msg.to)?;
 
@@ -239,8 +273,7 @@ async fn send_one_message(
         )
         .await?;
         let send_id = decode_bytes32(result)?;
-        // Return a fake receipt for dry-run
-        return Err(anyhow::anyhow!("dry-run sendId: {send_id:#x}"));
+        return Ok(SendResult::DryRun { send_id });
     }
 
     let wallet = wallet.ok_or_else(|| anyhow::anyhow!("wallet required"))?;
@@ -264,7 +297,11 @@ async fn send_one_message(
 
     let send_id = extract_send_id(receipt.logs(), addresses.interop_center);
 
-    Ok((tx_hash, send_id, receipt))
+    Ok(SendResult::Sent {
+        tx_hash,
+        send_id,
+        receipt,
+    })
 }
 
 async fn relay_message(
