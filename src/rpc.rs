@@ -168,24 +168,30 @@ pub async fn eth_call_with_value(
     Ok(result)
 }
 
-/*
 pub async fn estimate_gas(
     client: &RpcClient,
-    from: Address,
     to: Address,
     data: Bytes,
+    value: Option<alloy_primitives::U256>,
+    from: Option<Address>,
 ) -> Result<u64> {
     let request = TransactionRequest {
-        from: Some(from),
+        from,
         to: Some(to.into()),
         input: TransactionInput::new(data),
+        value,
         ..Default::default()
     };
     Ok(client.provider.estimate_gas(request).await?)
 }
 
-pub async fn send_raw_transaction(client: &RpcClient, raw_tx: Bytes) -> Result<B256> {
-    let tx = client.provider.send_raw_transaction(&raw_tx).await?;
-    Ok(tx.tx_hash().clone())
+pub async fn get_gas_price(client: &RpcClient) -> Result<u128> {
+    Ok(client.provider.get_gas_price().await?)
 }
-*/
+
+pub fn format_gas_estimate(gas: u64, gas_price: u128) -> String {
+    let cost_wei = gas as u128 * gas_price;
+    let gas_price_gwei = gas_price as f64 / 1e9;
+    let cost_eth = cost_wei as f64 / 1e18;
+    format!("estimated gas: {gas}  |  gas price: {gas_price_gwei:.3} gwei  |  cost: {cost_eth:.9} ETH")
+}

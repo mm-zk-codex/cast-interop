@@ -6,7 +6,7 @@ use crate::cli::RelayArgs;
 use crate::commands::bundle_action::decode_send_transaction;
 use crate::config::Config;
 use crate::relay_flow::{build_message_proof, wait_for_proof, wait_for_root};
-use crate::rpc::{eth_call, get_transaction_receipt, RpcClient};
+use crate::rpc::{self, eth_call, get_transaction_receipt, RpcClient};
 use crate::signer::{load_signer, SignerOptions};
 use crate::types::{
     format_hex, require_signer_or_dry_run, AddressBook, MessageInclusionProof, RelaySummary,
@@ -53,7 +53,7 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
         &config,
     )?;
 
-    require_signer_or_dry_run(wallet.is_some(), args.dry_run, "relay")?;
+    require_signer_or_dry_run(wallet.is_some(), args.dry_run || args.estimate_gas, "relay")?;
 
     let source_rpc = config.resolve_rpc(args.rpc_src.as_deref(), args.chain_src.as_deref())?;
     let dest_rpc = config.resolve_rpc(args.rpc_dest.as_deref(), args.chain_dest.as_deref())?;
@@ -118,6 +118,19 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
         "execute" => encode_execute_bundle_call(encoded_bundle.clone(), proof.clone())?,
         other => anyhow::bail!("invalid mode {other} (expected verify or execute)"),
     };
+
+    if args.estimate_gas {
+        match rpc::estimate_gas(&dest_client, handler, calldata.clone(), None, None).await {
+            Ok(gas) => match rpc::get_gas_price(&dest_client).await {
+                Ok(price) => println!("{}", rpc::format_gas_estimate(gas, price)),
+                Err(err) => eprintln!("warning: gas price unavailable: {err}"),
+            },
+            Err(err) => eprintln!("gas estimation failed: {err}"),
+        }
+        if !args.dry_run {
+            return Ok(());
+        }
+    }
 
     let mut handler_tx_hash = None;
     if args.dry_run {

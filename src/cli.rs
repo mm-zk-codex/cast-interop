@@ -689,6 +689,12 @@ pub struct BundleActionArgs {
     )]
     pub dry_run: bool,
 
+    #[arg(
+        long,
+        help = "Estimate gas cost without sending a transaction. Default: false."
+    )]
+    pub estimate_gas: bool,
+
     #[command(flatten)]
     pub signer: SignerArgs,
 }
@@ -782,6 +788,12 @@ pub struct RelayArgs {
         help = "Simulate the relay without sending transactions. Default: false."
     )]
     pub dry_run: bool,
+
+    #[arg(
+        long,
+        help = "Estimate gas cost on the destination chain without sending a transaction. Default: false."
+    )]
+    pub estimate_gas: bool,
 
     #[command(flatten)]
     pub signer: SignerArgs,
@@ -933,6 +945,12 @@ pub struct SendMessageArgs {
     )]
     pub dry_run: bool,
 
+    #[arg(
+        long,
+        help = "Estimate gas cost without sending a transaction. Default: false."
+    )]
+    pub estimate_gas: bool,
+
     #[command(flatten)]
     pub signer: SignerArgs,
 
@@ -975,6 +993,12 @@ pub struct SendBundleArgs {
         help = "Simulate the bundle without sending a transaction. Default: false."
     )]
     pub dry_run: bool,
+
+    #[arg(
+        long,
+        help = "Estimate gas cost without sending a transaction. Default: false."
+    )]
+    pub estimate_gas: bool,
 
     #[command(flatten)]
     pub signer: SignerArgs,
