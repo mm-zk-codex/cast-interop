@@ -1,8 +1,9 @@
-use crate::abi::{decode_interop_bundle_sent, interop_bundle_sent_topic};
+use crate::abi::{decode_interop_bundle_sent, interop_bundle_sent_topic, l1_message_sent_topic};
 use crate::cli::AutoRelayArgs;
 use crate::config::Config;
 use crate::relay_flow::{build_message_proof, execute_bundle, wait_for_proof, wait_for_root};
 use crate::rpc::{get_transaction_receipt, RpcClient};
+use crate::types::L1_SENDER_ADDRESS;
 use crate::types::{AddressBook, MessageInclusionProof};
 use alloy_primitives::{Address, Bytes, B256, U256};
 use alloy_provider::Provider;
@@ -38,6 +39,7 @@ struct Job {
     source_tx_hash: B256,
     block_number: u64,
     tx_index: u64,
+    msg_index: u32,
     bundle_hash: Option<B256>,
     encoded_bundle: Bytes,
     log_proof: Option<crate::rpc::LogProof>,
@@ -86,6 +88,7 @@ struct DetectedJob {
     source_tx_hash: B256,
     block_number: u64,
     tx_index: u64,
+    msg_index: u32,
     bundle_hash: Option<B256>,
     encoded_bundle: Bytes,
 }
@@ -287,7 +290,7 @@ async fn scan_block(
     while let Some(result) = join_set.join_next().await {
         match result {
             Ok(Ok(receipt)) => {
-                if let Some(job) = detect_job_from_receipt(&receipt, center, src_index) {
+                for job in detect_jobs_from_receipt(&receipt, center, src_index) {
                     insert_job(state, job)?;
                 }
             }
@@ -303,38 +306,60 @@ async fn scan_block(
     Ok(())
 }
 
-fn detect_job_from_receipt(
+fn detect_jobs_from_receipt(
     receipt: &alloy_rpc_types::TransactionReceipt,
     center: Address,
     src_index: usize,
-) -> Option<DetectedJob> {
+) -> Vec<DetectedJob> {
+    let mut jobs = Vec::new();
+    let mut l1_message_count: u32 = 0;
+    let l1_messenger = L1_SENDER_ADDRESS;
+    let l1_msg_topic = l1_message_sent_topic();
+    let bundle_topic = interop_bundle_sent_topic();
+
     for log in receipt.logs() {
-        if log.address() != center {
-            continue;
-        }
         let topic = log.topics().first().copied();
-        if topic == Some(interop_bundle_sent_topic()) {
-            let (_, bundle_hash, bundle) =
-                decode_interop_bundle_sent(log.data().data.clone()).ok()?;
-            let encoded_bundle = crate::abi::encode_interop_bundle(&bundle);
-            let dest_chain_id = u256_to_u64(bundle.destinationChainId).ok()?;
-            return Some(DetectedJob {
-                src_index,
-                dest_chain_id,
-                source_tx_hash: receipt.transaction_hash,
-                block_number: receipt.block_number.unwrap_or_default(),
-                tx_index: receipt.transaction_index.unwrap_or_default(),
-                bundle_hash: Some(bundle_hash),
-                encoded_bundle,
-            });
+
+        // Count L1MessageSent events from L1Messenger (L2ToL1Messenger at 0x8008)
+        if log.address() == l1_messenger && topic == Some(l1_msg_topic) {
+            l1_message_count += 1;
+        }
+
+        // When we see an InteropBundleSent, create a job with the current L1 message count
+        if log.address() == center && topic == Some(bundle_topic) {
+            if let Ok((_, bundle_hash, bundle)) =
+                decode_interop_bundle_sent(log.data().data.clone())
+            {
+                let encoded_bundle = crate::abi::encode_interop_bundle(&bundle);
+                if let Ok(dest_chain_id) = u256_to_u64(bundle.destinationChainId) {
+                    // msg_index is the count of L1MessageSent events before this bundle event,
+                    // minus 1 because indices are 0-based and the bundle's own L1MessageSent
+                    // is included in the count
+                    let msg_index = l1_message_count.saturating_sub(1);
+                    jobs.push(DetectedJob {
+                        src_index,
+                        dest_chain_id,
+                        source_tx_hash: receipt.transaction_hash,
+                        block_number: receipt.block_number.unwrap_or_default(),
+                        tx_index: receipt.transaction_index.unwrap_or_default(),
+                        msg_index,
+                        bundle_hash: Some(bundle_hash),
+                        encoded_bundle,
+                    });
+                }
+            }
         }
     }
-    None
+    jobs
 }
 
 fn insert_job(state: &Arc<Mutex<AppState>>, detected: DetectedJob) -> Result<()> {
     let mut state = state.lock().expect("state lock");
-    let key = format!("{}:{:#x}", detected.src_index, detected.source_tx_hash);
+    // Include msg_index in key to differentiate multiple bundles from the same transaction
+    let key = format!(
+        "{}:{:#x}:{}",
+        detected.src_index, detected.source_tx_hash, detected.msg_index
+    );
     if state.jobs.contains_key(&key) {
         return Ok(());
     }
@@ -359,6 +384,7 @@ fn insert_job(state: &Arc<Mutex<AppState>>, detected: DetectedJob) -> Result<()>
         source_tx_hash: detected.source_tx_hash,
         block_number: detected.block_number,
         tx_index: detected.tx_index,
+        msg_index: detected.msg_index,
         bundle_hash: detected.bundle_hash,
         encoded_bundle: detected.encoded_bundle,
         log_proof: None,
@@ -373,8 +399,8 @@ fn insert_job(state: &Arc<Mutex<AppState>>, detected: DetectedJob) -> Result<()>
         in_progress: false,
     };
     eprintln!(
-        "detected bundle {:#x} -> dest {}",
-        job.source_tx_hash, job.dest_chain_id
+        "detected bundle {:#x} msg_index={} -> dest {}",
+        job.source_tx_hash, job.msg_index, job.dest_chain_id
     );
     state.jobs.insert(key.clone(), job);
     state.job_order.push_back(key.clone());
@@ -461,7 +487,7 @@ async fn process_job(
     job_key: &str,
     poll: Duration,
 ) -> Result<()> {
-    let (stage, src_index, dest_index, tx_hash, block_number, bundle, proof, root_ready) = {
+    let (stage, src_index, dest_index, tx_hash, block_number, msg_index, bundle, proof, root_ready) = {
         let state = state.lock().expect("state lock");
         let job = state.jobs.get(job_key).context("job missing")?;
         (
@@ -470,6 +496,7 @@ async fn process_job(
             job.dest_index,
             job.source_tx_hash,
             job.block_number,
+            job.msg_index,
             job.encoded_bundle.clone(),
             job.log_proof.clone(),
             job.root_ready,
@@ -483,9 +510,16 @@ async fn process_job(
         JobStage::Detected | JobStage::WaitingProof => {
             update_job_stage(state, job_key, JobStage::WaitingProof);
             let _permit = semaphore.acquire_owned().await?;
-            let proof = wait_for_proof(&source.client, block_number, tx_hash, 0, timeout, poll)
-                .await
-                .context("proof wait failed")?;
+            let proof = wait_for_proof(
+                &source.client,
+                block_number,
+                tx_hash,
+                msg_index,
+                timeout,
+                poll,
+            )
+            .await
+            .context("proof wait failed")?;
             eprintln!(
                 "proof ready {:#x} batch={} id={}",
                 tx_hash, proof.batch_number, proof.id

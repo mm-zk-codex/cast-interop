@@ -3,14 +3,14 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-pub const DEFAULT_INTEROP_CENTER: &str = "0x0000000000000000000000000000000000010010";
-pub const DEFAULT_INTEROP_HANDLER: &str = "0x000000000000000000000000000000000001000d";
+pub const DEFAULT_INTEROP_CENTER: &str = "0x000000000000000000000000000000000001000d";
+pub const DEFAULT_INTEROP_HANDLER: &str = "0x000000000000000000000000000000000001000e";
 pub const DEFAULT_INTEROP_ROOT_STORAGE: &str = "0x0000000000000000000000000000000000010008";
 pub const DEFAULT_ASSET_ROUTER: &str = "0x0000000000000000000000000000000000010003";
 pub const BUNDLE_IDENTIFIER: u8 = 0x01;
 
 pub const L1_SENDER_ADDRESS: Address = address!("0000000000000000000000000000000000008008");
-pub const INTEROP_CENTER_ADDRESS: Address = address!("0000000000000000000000000000000000010010");
+pub const INTEROP_CENTER_ADDRESS: Address = address!("000000000000000000000000000000000001000d");
 
 #[derive(Clone, Debug)]
 pub struct AddressBook {
@@ -112,6 +112,7 @@ pub struct InteropCallView {
 pub struct BundleAttributesView {
     pub execution_address: String,
     pub unbundler_address: String,
+    pub use_fixed_fee: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -191,6 +192,7 @@ alloy_sol_types::sol! {
     struct BundleAttributes {
         bytes executionAddress;
         bytes unbundlerAddress;
+        bool useFixedFee;
     }
 
     struct InteropBundle {
