@@ -58,7 +58,7 @@ export DEST_RECIPIENT=0x...
 InteropCenter system contract address (from zkSync OS) is:
 
 ```shell
-export INTEROP_CENTER=0x0000000000000000000000000000000000010010
+export INTEROP_CENTER=0x000000000000000000000000000000000001000d
 ```
 
 Deploy:

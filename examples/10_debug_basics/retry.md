@@ -42,7 +42,7 @@ export MIRROR_ADDR=0x....
 We need destination recipient bytes (ERC-7930) for (destChainId, MIRROR_ADDR).
 
 ```shell
-export INTEROP_CENTER=0x0000000000000000000000000000000000010010
+export INTEROP_CENTER=0x000000000000000000000000000000000001000d
 
 cast chain-id -r http://localhost:3051
 # 6566 (example)

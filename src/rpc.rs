@@ -35,7 +35,7 @@ pub struct LogProof {
     pub id: u64,
     pub proof: Vec<String>,
     pub root: String,
-    #[serde(rename = "batch_number")]
+    #[serde(alias = "batch_number", alias = "batchNumber")]
     pub batch_number: u64,
 }
 

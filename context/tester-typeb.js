@@ -4,8 +4,8 @@ const ethers = require('ethers');
 // ---- constants ----
 
 // Fixed system contract on zkSync L2
-const INTEROP_CENTER_ADDRESS = '0x0000000000000000000000000000000000010010';
-const INTEROP_HANDLER_ADDRESS = '0x000000000000000000000000000000000001000d';
+const INTEROP_CENTER_ADDRESS = '0x000000000000000000000000000000000001000d';
+const INTEROP_HANDLER_ADDRESS = '0x000000000000000000000000000000000001000e';
 
 // Address of the contract with interopRoots mapping
 const L2_INTEROP_ROOT_STORAGE = '0x0000000000000000000000000000000000010008';
@@ -150,42 +150,42 @@ function buildSecondBridgeCalldata(assetId, amount, receiver, maybeTokenAddress)
 }
 
 async function waitUntilBlockFinalized(wallet, blockNumber) {
-    console.log('Waiting for block to be finalized...', blockNumber);
-    // Similar to Rust: poll for finalized block, with retries and interval
-    const POLL_INTERVAL = 100; // ms
-    const DEFAULT_TIMEOUT = 300_000; // ms (5 minutes)
-    let retries = Math.floor(DEFAULT_TIMEOUT / POLL_INTERVAL);
-    while (retries > 0) {
-      // 'finalized' block is mapped to the latest executed block
-      let executedBlock;
-      try {
-        const block = await wallet.provider.getBlock('finalized');
-        executedBlock = block ? block.number : 0;
-      } catch (e) {
-        executedBlock = 0;
-      }
-      if (executedBlock >= blockNumber) {
-        // Block is finalized
-        return;
-      } else {
-        // Optionally log debug info
-        // console.debug(`Block not finalized yet: executedBlock=${executedBlock}, expected=${blockNumber}`);
-        retries -= 1;
-        await new Promise((res) => setTimeout(res, POLL_INTERVAL));
-      }
+  console.log('Waiting for block to be finalized...', blockNumber);
+  // Similar to Rust: poll for finalized block, with retries and interval
+  const POLL_INTERVAL = 100; // ms
+  const DEFAULT_TIMEOUT = 300_000; // ms (5 minutes)
+  let retries = Math.floor(DEFAULT_TIMEOUT / POLL_INTERVAL);
+  while (retries > 0) {
+    // 'finalized' block is mapped to the latest executed block
+    let executedBlock;
+    try {
+      const block = await wallet.provider.getBlock('finalized');
+      executedBlock = block ? block.number : 0;
+    } catch (e) {
+      executedBlock = 0;
     }
-    throw new Error('Block was not finalized in time');
+    if (executedBlock >= blockNumber) {
+      // Block is finalized
+      return;
+    } else {
+      // Optionally log debug info
+      // console.debug(`Block not finalized yet: executedBlock=${executedBlock}, expected=${blockNumber}`);
+      retries -= 1;
+      await new Promise((res) => setTimeout(res, POLL_INTERVAL));
+    }
+  }
+  throw new Error('Block was not finalized in time');
 }
 
 async function waitForL2ToL1LogProof(wallet, blockNumber, txHash) {
-    // First, we wait for block to be finalized.
-    await waitUntilBlockFinalized(wallet, blockNumber);
+  // First, we wait for block to be finalized.
+  await waitUntilBlockFinalized(wallet, blockNumber);
 
-    // Second, we wait for the log proof.
-    while ((await wallet.provider.getLogProof(txHash, 0)) == null) {
-        // console.log('Waiting for log proof...');
-        await zksync.utils.sleep(wallet.provider.pollingInterval);
-    }
+  // Second, we wait for the log proof.
+  while ((await wallet.provider.getLogProof(txHash, 0)) == null) {
+    // console.log('Waiting for log proof...');
+    await zksync.utils.sleep(wallet.provider.pollingInterval);
+  }
 }
 
 function requireEnv(name) {
@@ -367,12 +367,12 @@ async function main() {
   // ---- execute bundle on second L2 ----
 
   console.log('Waiting for interop root to become available on second chain...');
-    await waitUntilRootBecomesAvailable(
-        walletB,
-        (await providerA.getNetwork()).chainId,
-        logProof.batch_number,
-        logProof.root
-    );
+  await waitUntilRootBecomesAvailable(
+    walletB,
+    (await providerA.getNetwork()).chainId,
+    logProof.batch_number,
+    logProof.root
+  );
 
   // Extract the InteropBundle from the receipt logs
   const iface = new ethers.Interface([
