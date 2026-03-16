@@ -1,4 +1,4 @@
-use crate::abi::{decode_interop_bundle_sent, encode_interop_bundle, interop_bundle_sent_topic};
+use crate::abi::{encode_interop_bundle, extract_bundles_from_receipt};
 use crate::cli::BundleExtractArgs;
 use crate::config::Config;
 use crate::rpc::{get_transaction_receipt, RpcClient};
@@ -18,18 +18,21 @@ pub async fn run(args: BundleExtractArgs, config: Config, _addresses: AddressBoo
         B256::from_str(&args.tx).with_context(|| format!("invalid tx hash {}", args.tx))?;
     let receipt = get_transaction_receipt(&client, tx_hash).await?;
 
-    let mut found = None;
-    for log in receipt.logs() {
-        if log.topics().first().copied() == Some(interop_bundle_sent_topic()) {
-            let decoded = decode_interop_bundle_sent(log.data().data.clone())?;
-            found = Some(decoded);
-            break;
-        }
-    }
-
-    let Some((_, bundle_hash, bundle)) = found else {
+    let bundles = extract_bundles_from_receipt(&receipt)?;
+    if bundles.is_empty() {
         anyhow::bail!("InteropBundleSent not found in receipt");
-    };
+    }
+    let idx = args.bundle_index as usize;
+    if idx >= bundles.len() {
+        anyhow::bail!(
+            "bundle-index {} out of range (transaction has {} bundle(s))",
+            idx,
+            bundles.len()
+        );
+    }
+    let detected = &bundles[idx];
+    let bundle_hash = detected.bundle_hash;
+    let bundle = &detected.bundle;
 
     let encoded = encode_interop_bundle(&bundle);
     let encoded_hex = format_hex(&encoded.0);

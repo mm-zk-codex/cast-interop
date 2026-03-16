@@ -565,6 +565,14 @@ pub struct BundleExtractArgs {
 
     #[arg(long, help = "Emit JSON output. Default: false.")]
     pub json: bool,
+
+    #[arg(
+        long,
+        value_name = "INDEX",
+        default_value_t = 0,
+        help = "Which InteropBundleSent event to select when a transaction contains multiple bundles. Default: 0."
+    )]
+    pub bundle_index: u32,
 }
 
 /// Fetch a log proof for an interop transaction.
@@ -762,9 +770,17 @@ pub struct RelayArgs {
         long,
         value_name = "INDEX",
         default_value_t = 0,
-        help = "Message index within the transaction. Default: 0."
+        help = "Message index within the transaction (for proof lookup). Automatically derived from --bundle-index when not explicitly set. Default: 0."
     )]
     pub msg_index: u32,
+
+    #[arg(
+        long,
+        value_name = "INDEX",
+        default_value_t = 0,
+        help = "Which InteropBundleSent event to select when a transaction contains multiple bundles. Default: 0."
+    )]
+    pub bundle_index: u32,
 
     #[arg(
         long,
@@ -1361,9 +1377,17 @@ pub struct WatchArgs {
         long,
         value_name = "INDEX",
         default_value_t = 0,
-        help = "Message index within the transaction. Default: 0."
+        help = "Message index within the transaction (for proof lookup). Automatically derived from --bundle-index when not explicitly set. Default: 0."
     )]
     pub msg_index: u32,
+
+    #[arg(
+        long,
+        value_name = "INDEX",
+        default_value_t = 0,
+        help = "Which InteropBundleSent event to select when a transaction contains multiple bundles. Default: 0."
+    )]
+    pub bundle_index: u32,
 
     #[arg(
         long,

@@ -1,4 +1,7 @@
-use crate::abi::{decode_bundle_status, encode_bundle_status_call, encode_interop_roots_call};
+use crate::abi::{
+    decode_bundle_status, encode_bundle_status_call, encode_interop_roots_call,
+    extract_bundles_from_receipt,
+};
 use crate::cli::WatchArgs;
 use crate::config::Config;
 use crate::rpc::{
@@ -7,7 +10,7 @@ use crate::rpc::{
 use crate::types::{parse_b256, AddressBook};
 use alloy_primitives::{B256, U256};
 use alloy_provider::Provider;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use serde::Serialize;
 use std::time::Duration;
 
@@ -37,10 +40,31 @@ pub async fn run(args: WatchArgs, config: Config, addresses: AddressBook) -> Res
     let poll = Duration::from_millis(args.poll_ms.unwrap_or(1_000));
     let start = tokio::time::Instant::now();
 
+    let bundles = extract_bundles_from_receipt(&receipt)?;
+    let idx = args.bundle_index as usize;
+    let detected = if !bundles.is_empty() {
+        if idx >= bundles.len() {
+            anyhow::bail!(
+                "bundle-index {} out of range (transaction has {} bundle(s))",
+                idx,
+                bundles.len()
+            );
+        }
+        Some(&bundles[idx])
+    } else {
+        None
+    };
+    let bundle_hash = detected.map(|d| d.bundle_hash);
+    // Use computed msg_index from bundle detection unless user explicitly set --msg-index.
+    let msg_index = if args.msg_index != 0 {
+        args.msg_index
+    } else {
+        detected.map(|d| d.msg_index).unwrap_or(0)
+    };
+
     let mut finalized = false;
     let mut log_proof = None;
     let mut root_available = false;
-    let bundle_hash = extract_bundle_hash(&receipt)?;
     let mut bundle_status: Option<u8> = None;
 
     loop {
@@ -59,7 +83,7 @@ pub async fn run(args: WatchArgs, config: Config, addresses: AddressBook) -> Res
         }
 
         if log_proof.is_none() {
-            if let Some(proof) = get_log_proof(&source_client, tx_hash, args.msg_index).await? {
+            if let Some(proof) = get_log_proof(&source_client, tx_hash, msg_index).await? {
                 emit_event(
                     args.json,
                     "log_proof",
@@ -167,18 +191,6 @@ async fn fetch_bundle_status(
     let call = encode_bundle_status_call(bundle_hash);
     let data = eth_call(client, handler, call).await?;
     decode_bundle_status(data)
-}
-
-/// Extract a bundle hash from an InteropBundleSent log, if present.
-fn extract_bundle_hash(receipt: &alloy_rpc_types::TransactionReceipt) -> Result<Option<B256>> {
-    for log in receipt.logs() {
-        if log.topics().first().copied() == Some(crate::abi::interop_bundle_sent_topic()) {
-            let (_, hash, _) = crate::abi::decode_interop_bundle_sent(log.data().data.clone())
-                .context("failed to decode InteropBundleSent")?;
-            return Ok(Some(hash));
-        }
-    }
-    Ok(None)
 }
 
 /// Render a bundle status enum into a readable string.

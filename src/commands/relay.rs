@@ -1,6 +1,6 @@
 use crate::abi::{
-    decode_interop_bundle_sent, encode_execute_bundle_call, encode_interop_bundle,
-    encode_verify_bundle_call, interop_bundle_sent_topic,
+    encode_execute_bundle_call, encode_interop_bundle, encode_verify_bundle_call,
+    extract_bundles_from_receipt,
 };
 use crate::cli::RelayArgs;
 use crate::commands::bundle_action::decode_send_transaction;
@@ -13,7 +13,7 @@ use crate::types::{
 };
 use alloy_primitives::{Address, Bytes, B256};
 use alloy_provider::{Provider, ProviderBuilder};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -64,19 +64,29 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
     let tx_hash =
         B256::from_str(&args.tx).with_context(|| format!("invalid tx hash {}", args.tx))?;
     let receipt = get_transaction_receipt(&source_client, tx_hash).await?;
-    let mut bundle = None;
-    let mut bundle_hash = None;
-    for log in receipt.logs().iter() {
-        if log.topics().first().copied() == Some(interop_bundle_sent_topic()) {
-            let (_, hash, interop_bundle) = decode_interop_bundle_sent(log.data().data.clone())?;
-            bundle = Some(interop_bundle);
-            bundle_hash = Some(hash);
-            break;
-        }
+    let bundles = extract_bundles_from_receipt(&receipt)?;
+    if bundles.is_empty() {
+        anyhow::bail!("InteropBundleSent not found in receipt");
     }
-    let bundle = bundle.ok_or_else(|| anyhow!("InteropBundleSent not found in receipt"))?;
-    let bundle_hash = bundle_hash.expect("bundle hash");
-    let encoded_bundle = encode_interop_bundle(&bundle);
+    let idx = args.bundle_index as usize;
+    if idx >= bundles.len() {
+        anyhow::bail!(
+            "bundle-index {} out of range (transaction has {} bundle(s))",
+            idx,
+            bundles.len()
+        );
+    }
+    let detected = &bundles[idx];
+    let bundle = &detected.bundle;
+    let bundle_hash = detected.bundle_hash;
+    let encoded_bundle = encode_interop_bundle(bundle);
+    // Use the computed msg_index from L1MessageSent ordering unless the user
+    // explicitly provided --msg-index (non-zero value with bundle_index 0).
+    let msg_index = if args.msg_index != 0 {
+        args.msg_index
+    } else {
+        detected.msg_index
+    };
 
     let timeout = Duration::from_millis(args.timeout_ms.unwrap_or(300_000));
     let poll_ms = args.poll_ms.unwrap_or(1_000);
@@ -85,7 +95,7 @@ pub async fn run(args: RelayArgs, config: Config, addresses: AddressBook) -> Res
         &source_client,
         receipt.block_number.expect("missing block number"),
         tx_hash,
-        args.msg_index,
+        msg_index,
         timeout,
         Duration::from_millis(poll_ms),
     )
